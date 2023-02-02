@@ -1,0 +1,16 @@
+---
+title: "Pseudotime Analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+

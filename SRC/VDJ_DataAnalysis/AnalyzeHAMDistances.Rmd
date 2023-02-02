@@ -1,0 +1,119 @@
+---
+title: "Analyze Hamming Distances in heavy-chain CDR3 regions"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=7, fig.height=4}
+  plotHammingDistDitr <- function(inContigs, modelStr, titleStr, heavyAndLight=F){
+    
+    if(heavyAndLight){
+        dist_Vals <- distToNearest(inContigs, model=modelStr,
+                                   normalize="len", 
+                                   nproc=1, 
+                                   vCallColumn="V_CALL",
+                                   jCallColumn="J_CALL",
+                                   cellIdColumn="CELL", 
+                                   locusColumn="LOCUS")
+    }else{
+        dist_Vals <- distToNearest(inContigs, model=modelStr,
+                                   normalize="len",
+                                   nproc=1,
+                                   vCallColumn="V_CALL",
+                                   jCallColumn="J_CALL")
+    }
+    #output <- findThreshold(dist_Vals$DIST_NEAREST, method="gmm", model="gamma-gamma")
+    output <- findThreshold(dist_Vals$DIST_NEAREST, method="density")
+    plot(output, binwidth=0.02, title=titleStr)
+    print(output@threshold)
+    return(output)
+  }
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=7, fig.height=4}
+  hamDistances <- c()
+  aaDistances <- c()
+  for(sampleName in c("UC24B", "UC24C", "UC25A", "UC25B")){
+    print(sampleName)
+    
+    ## With the new updated version of DefineClones, the extension of the file is .tab instead of .tsv 
+    if(sampleName %ni% c("UC22RecA", "UC22RecB", "UC22SIGA", "UC22SIGB", "UC23A", "UC23B", "UC23C", "HC4RC", "HC4TC", "HC4RECT" ,"HC5TC" ,"HC5LC" ,"HC5REC" ,"HC6TC", "HC6LC", "HC6REC", "HC8TC", "HC8LC", "HC8REC", "HC9TC", "HC9LC", "HC9REC", "HC7TC", "HC7LC", "HC7REC", "UC24B", "UC24C", "UC25A", "UC25B")){
+      allContigs <- read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/filtered_single_contig_igblast_db-pass.tab"),
+                               sep="\t", header=TRUE, stringsAsFactors = F)
+    }else{
+      allContigs <- read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/filtered_single_contig_igblast_db-pass.tsv"),
+                               sep="\t", header=TRUE, stringsAsFactors = F)
+      colnames(allContigs) <- c("SEQUENCE_ID", "SEQUENCE_INPUT", "rev_comp", "FUNCTIONAL", "V_CALL", "D_CALL", "J_CALL", "SEQUENCE_IMGT",
+                                "GERMLINE_IMGT", "JUNCTION", "junction_aa", "v_cigar" ,"d_cigar" ,  "j_cigar", "STOP", "IN_FRAME", "LOCUS",
+                                "JUNCTION_LENGTH", "NP1_LENGTH", "NP2_LENGTH", "V_SEQ_START", "v_sequence_end", "V_GERM_START_VDJ", "v_germline_end", "D_SEQ_START", "d_sequence_end", "D_GERM_START", "d_germline_end", "J_SEQ_START", "j_sequence_end", "J_GERM_START", "j_germline_end", "CELL", "C_CALL", "CONSCOUNT", "UMICOUNT")
+      allContigs$SEQUENCE_VDJ <- apply(allContigs,1, function(x){return(substr(x["SEQUENCE_INPUT"], x["V_SEQ_START"], x["v_sequence_end"]))})
+    }
+    
+    allContigs <- allContigs[order(allContigs$CELL, allContigs$LOCUS),]
+    a <- split(allContigs, f = allContigs$CELL)
+    b <- unlist(lapply(a, function(x){return(length(unique(x$LOCUS)))}))
+    a <- a[b==2]
+    allContigs <- do.call(rbind,a)
+    allContigs$V_CALL <- sapply(allContigs$V_CALL, function(x){
+      k <- sapply(x, function(y){
+        return(as.list(strsplit(y,split=",")))
+      })
+      
+      n <- paste0(unlist(lapply(k[[1]], function(m){strsplit(m,split="\\*")[[1]][1]})), collapse = ",")
+    
+    })
+    
+    allContigs$J_CALL <- sapply(allContigs$J_CALL, function(x){
+      k <- sapply(x, function(y){
+        return(as.list(strsplit(y,split=",")))
+      })
+      
+      n <- paste0(unlist(lapply(k[[1]], function(m){strsplit(m,split="\\*")[[1]][1]})), collapse = ",")
+    
+    })
+    allContigs <- allContigs[order(allContigs$CELL, allContigs$LOCUS),]
+    allContigs <- as.data.table(allContigs)
+    
+    heavyContigs <- allContigs[allContigs$LOCUS =="IGH",]
+    heavyContigs <- heavyContigs[, c("CELL","V_CALL","J_CALL","C_CALL","FUNCTIONAL","IN_FRAME","STOP","JUNCTION","JUNCTION_LENGTH",
+                                     "LOCUS","CONSCOUNT","SEQUENCE_VDJ", "SEQUENCE_IMGT", "GERMLINE_IMGT", "SEQUENCE_ID")]
+    lightContigs <- allContigs[allContigs$LOCUS !="IGH",c("CELL","V_CALL","J_CALL","C_CALL","FUNCTIONAL","IN_FRAME","STOP",
+                                                          "JUNCTION","SEQUENCE_VDJ", "SEQUENCE_IMGT", "GERMLINE_IMGT")]
+    colnames(lightContigs) <- c("CELL","V_CALL_LIGHT","J_CALL_LIGHT","C_CALL_LIGHT","FUNCTIONAL_LIGHT","IN_FRAME_LIGHT",
+                                "STOP_LIGHT","JUNCTION_LIGHT","VDJ_SEQUENCE_LIGHT", "SEQUENCE_IMGT_LIGHT", "GERMLINE_IMGT_LIGHT")
+      
+    
+     #plotHammingDistDitr(allContigs,"ham",paste0(sampleName, " all chain contigs-ham model"), heavyAndLight = TRUE)
+     
+     # a <- plotHammingDistDitr(heavyContigs,"ham",paste0(sampleName, " heavy chain contigs-ham model"), heavyAndLight = FALSE)
+     # hamDistances <- c(hamDistances, a@threshold)
+     # 
+     # 
+     # plotHammingDistDitr(allContigs,"aa",paste0(sampleName, " all chain contigs-aa model"), heavyAndLight = TRUE)
+     # b <- plotHammingDistDitr(heavyContigs,"aa",paste0(sampleName, " heavy chain contigs-ham model"), heavyAndLight = FALSE)
+     # aaDistances <- c(aaDistances, b@threshold)
+     # 
+     
+     allContigs <- merge(heavyContigs,lightContigs, by="CELL")  
+  
+     write.table(allContigs, file = paste0(dataDir,"/VDJ_Files/",sampleName,
+                                           "/ChangeO/filtered_single_light_heavy_paired.tab"),
+                 sep="\t",
+                 quote = FALSE,
+                 row.names = FALSE)
+  }
+  
+
+```
+
+

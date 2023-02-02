@@ -1,0 +1,359 @@
+---
+title: ' V(D)J Quality Control -High confidence contig annotations'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+sampleNamesVDJ <- samples$SampleNames
+```
+
+Summary plots for all contig annotations:
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+dfAll = data.frame(barcode=character(),
+                   contig_id=character(),
+                   high_confidence=logical(),
+                   length=integer(),
+                   reads=integer(),
+                  umis=integer(),
+                  raw_clonotype_id=character(),
+                  chain=character(),
+                  cdr3=character(),
+                  cdr3_nt=character(),
+                  SampleNames=character(),
+                  SampleAttribute=character())
+
+hAll <- data.frame(barcode=character(),
+                   N=integer(),
+                   SampleNames=character(),
+                   SampleAttribute=character())
+
+for(elem in 1:length(sampleNamesVDJ)){
+  allContigs <- read.csv(paste0(dataDir,"/VDJ_Files/",sampleNamesVDJ[[elem]],"/filtered_contig_annotations.csv"), stringsAsFactors = F)
+  allContigs <- allContigs[allContigs$high_confidence == "True",]
+  allContigs <- allContigs[allContigs$chain %in% c("IGK","IGH","IGL"),]
+  allContigs <- allContigs[allContigs$cdr3 != "None",]
+  
+  df <- allContigs[,c("barcode","contig_id","high_confidence", "length", "reads", "umis", "raw_clonotype_id", "chain","cdr3","cdr3_nt")]
+  #df[df$raw_clonotype_id != "None","raw_clonotype_id"] <- "Clonotype"
+  #df[df$raw_clonotype_id == "None","raw_clonotype_id"] <- "No clonotype"
+  df$SampleNames <- sampleNamesVDJ[[elem]]
+  df$SampleAttribute <- samples[elem, "SampleAttributes"]
+  df$barcode <- paste0(df$SampleNames,"_",df$barcode)
+  dfAll <- rbind(dfAll, df)
+  
+  
+  h <- data.table(allContigs[,c("barcode", "contig_id")])
+  h$barcode <- paste0(sampleNamesVDJ[[elem]],"_",h$barcode)
+  h <- h[, .(.N), by = .(barcode)]
+  h$SampleNames <- sampleNamesVDJ[[elem]]
+  h$SampleAttribute <- samples[elem, "SampleAttributes"]
+  hAll <- rbind(hAll, h)
+}
+```
+
+Distribution of the number of V(D)J contigs per sample:
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+ plotContigs <- function(hIn, titleStr){
+   a <- ggplot(hIn, aes(x=N)) +
+          geom_histogram(binwidth=1, color="black", fill="white")+ 
+          facet_wrap(~SampleNames, nrow = 1)+
+          xlab("Number of contigs")+
+          ylab("Number of cells")+xlim(0,10)+ggtitle(titleStr)
+   return(a)
+ } 
+
+ hInf <- hAll[hAll$SampleAttribute=="UC_INF",]
+ hNonInf <- hAll[hAll$SampleAttribute=="UC_NonINF",]
+ #hPscNonInf <- hAll[hAll$SampleAttribute=="PSC_NonINF",]
+ hHealthy <- hAll[hAll$SampleAttribute=="Healthy",]
+ 
+ p1 <- plotContigs(hInf, "UC Inflamed")
+ p2 <- plotContigs(hNonInf, "UC Non-Inflamed")
+ #p3 <- plotContigs(hPscNonInf, "PSC Non-Inflamed")
+ p4 <- plotContigs(hHealthy, "Healthy")
+ 
+ print(plot_grid(p1, p2,  p4, nrow=3))
+```
+
+In UC patients, especially in inflamed samples, in general there are more number of V(D)J contigs per cell. 
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+hAll <- hAll[order(hAll$barcode),]
+hAll$ContigNum <- "1"
+hAll[hAll$N==2,"ContigNum"] <- "2"
+hAll[hAll$N>2,"ContigNum"] <- ">2"
+
+k <- table(hAll[,c("SampleNames","ContigNum")])
+k <- melt(k, id.vars="SampleNames")
+
+
+k <- merge(k, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+k$ContigNum <- factor(k$ContigNum, levels = c("1", "2", ">2"))
+plotContigPercents <- function(k, titleStr){
+   a <- ggplot(k, aes(x=SampleNames, y=value, fill=ContigNum)) +
+          geom_bar(stat="identity", position=position_dodge())+
+          xlab("")+
+          ylab("Number of cells")+ggtitle(titleStr)+
+     theme(legend.position = "right", axis.text.x = element_text(angle = 7, hjust = 1, size=15), axis.text.y=element_text(size=20), title = element_text(size=25))+
+     scale_fill_brewer(palette = "Dark2")
+   return(a)
+} 
+
+p1 <- plotContigPercents(k[k$SampleAttributes=="UC_INF",],"UC Inflamed")
+p2 <- plotContigPercents(k[k$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed")
+#p3 <- plotContigPercents(k[k$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed")
+p4 <- plotContigPercents(k[k$SampleAttributes=="Healthy",],"Healthy")
+print(plot_grid(p1, p2, p4, nrow=3))
+```
+
+These contigs are classified as low and high confidence based on their total number of UMIs.
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+
+plotDistributions <- function(inDF, titleStr){
+   a <-  ggplot(inDF, aes(x=high_confidence, y=umis)) +
+        geom_violin(trim=FALSE, fill='#A4A4A4', color="darkred")+
+        facet_wrap(~SampleNames, nrow = 1)+
+        geom_boxplot(width=0.1) + xlab("High confidence")+
+        ylab("Number of UMIs")+
+        scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                    labels = trans_format("log10", math_format(10^.x)))+
+        scale_fill_brewer(palette = "Dark2")+
+     ggtitle(titleStr)+
+     theme(axis.text = element_text(size=20), axis.title=element_text(size=20), strip.text.x =element_text(size=20))
+   return(a)
+} 
+
+p1 <- plotDistributions(dfAll[dfAll$SampleAttribute=="UC_INF",],"UC Inflamed")
+p2 <- plotDistributions(dfAll[dfAll$SampleAttribute=="UC_NonINF",],"UC Non-Inflamed")
+#p3 <- plotDistributions(dfAll[dfAll$SampleAttribute=="PSC_NonINF",],"PSC Non-Inflamed")
+p4 <- plotDistributions(dfAll[dfAll$SampleAttribute=="Healthy",],"Healthy")
+print(plot_grid(p1, p2, p4, nrow=3))
+
+```
+
+Read length is on the other hand distributed similarly in high and low contigs.
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+plotDistributions <- function(inDF, titleStr){
+   a <-  ggplot(inDF, aes(x=high_confidence, y=length)) +
+        geom_violin(trim=FALSE, fill='#A4A4A4', color="darkred")+
+        facet_wrap(~SampleNames, nrow = 1)+
+        geom_boxplot(width=0.1) + xlab("")+
+        ylab("Length of the reads")+
+        scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                    labels = trans_format("log10", math_format(10^.x)))+
+        scale_fill_brewer(palette = "Dark2")+ggtitle(titleStr)+
+     theme(axis.text = element_text(size=20), axis.title=element_text(size=20), strip.text.x =element_text(size=20))
+   return(a)
+} 
+
+p1 <- plotDistributions(dfAll[dfAll$SampleAttribute=="UC_INF",],"UC Inflamed")
+p2 <- plotDistributions(dfAll[dfAll$SampleAttribute=="UC_NonINF",],"UC Non-Inflamed")
+#p3 <- plotDistributions(dfAll[dfAll$SampleAttribute=="PSC_NonINF",],"PSC Non-Inflamed")
+p4 <- plotDistributions(dfAll[dfAll$SampleAttribute=="Healthy",],"Healthy")
+print(plot_grid(p1, p2, p4, nrow=3))
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=16, fig.height=9}
+dfAllMerged <- merge(dfAll, hAll, by=c("SampleNames","barcode","SampleAttribute"))
+
+plotDistributions2 <- function(inDF, titleStr){
+   a <-  ggplot(inDF, aes(x=ContigNum, y=umis)) +
+        geom_violin(trim=FALSE, fill='#A4A4A4', color="darkred")+
+        facet_wrap(~SampleNames, nrow = 1)+
+        geom_boxplot(width=0.1) + xlab("")+
+        ylab("Number of UMIs")+
+        scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                    labels = trans_format("log10", math_format(10^.x)))+
+        scale_fill_brewer(palette = "Dark2")+ggtitle(titleStr)+
+     theme(axis.text = element_text(size=20), axis.title=element_text(size=25), strip.text.x =element_text(size=20))
+   return(a)
+} 
+dfAllMerged$ContigNum <- factor(dfAllMerged$ContigNum, levels=c("1", "2", ">2"))
+p1 <- plotDistributions2(dfAllMerged[dfAllMerged$SampleAttribute=="UC_INF",],"UC Inflamed")
+p2 <- plotDistributions2(dfAllMerged[dfAllMerged$SampleAttribute=="UC_NonINF",],"UC Non-Inflamed")
+#p3 <- plotDistributions2(dfAllMerged[dfAllMerged$SampleAttribute=="PSC_NonINF",],"PSC Non-Inflamed")
+p4 <- plotDistributions2(dfAllMerged[dfAllMerged$SampleAttribute=="Healthy",],"Healthy")
+print(plot_grid(p1, p2, p4, nrow=3))
+```
+
+Additional contigs in the cells are generally low confidence (i.e. with low UMI count)
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+#  s <- table(dfAllMerged[,c("SampleNames", "ContigNum", "high_confidence")])
+#  lowC <- s[,,1]
+#  lowC <- melt(lowC, id.vars=SampleNames)
+#  lowC$Confidence <- "Low"
+#  
+#  highC <- s[,,2]
+#  highC <- melt(highC, id.vars=SampleNames)
+#  highC$Confidence <- "High"
+#  
+#  conf <- rbind(lowC,highC)
+#  conf <- merge(conf, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+#  conf$ContigNum <- factor(conf$ContigNum, levels = c("1", "2", ">2"))
+#  plotDistributions3 <- function(inDF, titleStr){
+#    a <-  ggplot(inDF, aes(x=ContigNum, y=value, fill=Confidence)) +
+#          geom_bar(stat="identity")+
+#         ylab("Number contigs")+ggtitle(titleStr)+theme(legend.position = "right", axis.text.x = element_text(angle = 7, hjust = 1))+
+#      scale_fill_brewer(palette = "Dark2")+xlab("")+
+#         facet_wrap(~SampleNames, nrow = 1)+
+#         scale_fill_brewer(palette = "Dark2")+ggtitle(titleStr)+
+#      theme(axis.text = element_text(size=25), axis.title=element_text(size=20), strip.text.x =element_text(size=20), title = element_text(size=25))
+#    return(a)
+# } 
+# dfAllMerged$ContigNum <- factor(dfAllMerged$ContigNum, levels=c("1", "2", ">2"))
+# p1 <- plotDistributions3(conf[conf$SampleAttributes=="UC_INF",],"UC Inflamed")
+# p2 <- plotDistributions3(conf[conf$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed")
+# #p3 <- plotDistributions3(conf[conf$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed")
+# p4 <- plotDistributions3(conf[conf$SampleAttributes=="Healthy",],"Healthy")
+# print(plot_grid(p1, p2, p4, nrow=3))
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE,fig.width=20, fig.height=12}
+ s <- table(dfAllMerged[,c("SampleNames", "ContigNum", "chain")])
+ igh <- s[,,1]
+ igh <- melt(igh, id.vars=SampleNames)
+ igh$chain <- "IGH"
+ 
+ igk <- s[,,2]
+ igk <- melt(igk, id.vars=SampleNames)
+ igk$chain <- "IGK"
+ 
+ igl <- s[,,3]
+ igl <- melt(igl, id.vars=SampleNames)
+ igl$chain <- "IGL"
+
+ 
+ igAll <- rbind(igh,igk)
+ igAll <- rbind(igAll,igl)
+ 
+ igAll <- merge(igAll, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+ igAll$ContigNum <- factor(igAll$ContigNum, levels = c("1", "2", ">2"))
+ plotDistributions4 <- function(inDF, titleStr){
+   a <-  ggplot(inDF, aes(x=ContigNum, y=value, fill=chain)) +
+         geom_bar(stat="identity", position = position_dodge())+
+        ylab("Number contigs")+ggtitle(titleStr)+theme(legend.position = "right")+
+     scale_fill_brewer(palette = "Dark2")+xlab("")+
+        facet_wrap(~SampleNames, nrow = 1)+
+        scale_fill_brewer(palette = "Dark2")+ggtitle(titleStr)+
+     theme(axis.text = element_text(size=25), axis.title=element_text(size=20), strip.text.x =element_text(size=20), title = element_text(size=25))
+   return(a)
+} 
+dfAllMerged$ContigNum <- factor(dfAllMerged$ContigNum, levels=c("1", "2", ">2"))
+p1 <- plotDistributions4(igAll[igAll$SampleAttributes=="UC_INF",],"UC Inflamed")
+p2 <- plotDistributions4(igAll[igAll$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed")
+#p3 <- plotDistributions4(igAll[igAll$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed")
+p4 <- plotDistributions4(igAll[igAll$SampleAttributes=="Healthy",],"Healthy")
+print(plot_grid(p1, p2, p4, nrow=3))
+```
+
+Cells with 3 V(D)J contigs have generally 2 kappa or 2 lambda chains,
+TODO: more detailed analysis of the sequences of the additional contigs to see the differences between two light chain contigs. Can there be a problem in receptor editing mechanism in UC patients?
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+allTT <- data.frame(contigS=character(),
+                    num=integer(),
+                    SampleNames=character())
+
+dfAllMerged <- dfAllMerged[order(dfAllMerged$SampleNames, dfAllMerged$barcode, dfAllMerged$chain),]
+
+for(elem in unique(dfAllMerged$SampleNames)){
+  tp <- data.table(dfAllMerged[dfAllMerged$SampleNames==elem & dfAllMerged$N==3,])
+  tp <- tp[tp$chain %in% c("IGH", "IGL", "IGK"),]
+  tp <- tp[order(SampleNames, barcode, chain),]
+  
+  tp <- tp[, ChainComb := do.call(paste, as.list(chain)), by = .(barcode)]
+  tp$ChainComb <- sapply(tp$ChainComb, function(x){str_replace_all(x, pattern=" ", replacement="_")})
+  
+  s <- table(tp$ChainComb)
+  tt <- data.frame(contigS=names(s), num=as.integer(s), SampleNames=elem)
+  
+  allTT <- rbind(allTT, tt)
+}
+
+ allTT <- merge(allTT, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+
+ plotDistributions5 <- function(inDF, titleStr){
+   a <-  ggplot(inDF, aes(x=contigS, y=num, fill=contigS)) +
+         geom_bar(stat="identity", position = position_dodge())+
+        ylab("Number of occurance")+ggtitle(titleStr)+theme(legend.position = "right")+
+     scale_fill_brewer(palette = "Paired")+xlab("")+
+        facet_wrap(~SampleNames, nrow = 1)+ theme_bw()+
+        scale_fill_manual(values = colorRampPalette(brewer.pal(12, "Dark2"))(10))+ggtitle(titleStr)+
+     theme(axis.text.x=element_blank(), axis.text.y = element_text(size=25), axis.title=element_text(size=20), strip.text.x =element_text(size=20), title = element_text(size=25), legend.text =element_text(size=16))
+   return(a)
+} 
+
+p1 <- plotDistributions5(allTT[allTT$SampleAttributes=="UC_INF",],"UC Inflamed")
+p2 <- plotDistributions5(allTT[allTT$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed")
+#p3 <- plotDistributions5(allTT[allTT$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed")
+p4 <- plotDistributions5(allTT[allTT$SampleAttributes=="Healthy",],"Healthy")
+print(plot_grid(p1, p2, p4, nrow=3))
+
+#saveRDS(dfAllMerged, paste0(dataDir, "/RDSFiles/allContigsMerged.rds"))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=12}
+
+# dfAllMergedHigh <- dfAllMerged[dfAllMerged$high_confidence=="True",]
+# dfAllMergedHigh <- as.data.table(dfAllMergedHigh)
+# ll <- dfAllMergedHigh[, .(.N), by = .(barcode)]
+# dfAllMergedHigh$N <- NULL
+# 
+# dfAllMergedHigh <- merge(dfAllMergedHigh, ll, by="barcode")
+# dfAllMergedHigh <- dfAllMergedHigh[dfAllMergedHigh$N == 3,]
+# allTT <- data.frame(contigS=character(),
+#                     num=integer(),
+#                     SampleNames=character())
+# 
+# 
+# for(elem in unique(dfAllMergedHigh$SampleNames)){
+#   tp <- data.table(dfAllMergedHigh[dfAllMergedHigh$SampleNames==elem & dfAllMergedHigh$N==3,])
+#   tp <- tp[tp$chain %in% c("IGH", "IGL", "IGK"),]
+#   tp <- tp[order(SampleNames, barcode, chain),]
+#   tp <- tp[, ChainComb := do.call(paste, as.list(chain)), by = .(barcode)]
+#   tp$ChainComb <- sapply(tp$ChainComb, function(x){str_replace_all(x, pattern=" ", replacement="_")})
+#   
+#   s <- table(tp$ChainComb)
+#   tt <- data.frame(contigS=names(s), num=as.integer(s), SampleNames=elem)
+#   
+#   allTT <- rbind(allTT, tt)
+# }
+# 
+#  allTT <- merge(allTT, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+# 
+#  plotDistributions5 <- function(inDF, titleStr){
+#    a <-  ggplot(inDF, aes(x=contigS, y=num, fill=contigS)) +
+#          geom_bar(stat="identity", position = position_dodge())+
+#         ylab("Number of occurance")+ggtitle(titleStr)+theme(legend.position = "right")+
+#      scale_fill_brewer(palette = "Paired")+xlab("")+
+#         facet_wrap(~SampleNames, nrow = 1)+ theme_bw()+
+#         scale_fill_manual(values = colorRampPalette(brewer.pal(12, "Paired"))(10))+ggtitle(titleStr)+
+#      theme(axis.text.x=element_blank(), axis.text.y = element_text(size=25), axis.title=element_text(size=20), strip.text.x =element_text(size=20), title = element_text(size=25), legend.text =element_text(size=16))
+#    return(a)
+# } 
+# 
+# p1 <- plotDistributions5(allTT[allTT$SampleAttributes=="UC_INF",],"UC Inflamed")
+# p2 <- plotDistributions5(allTT[allTT$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed")
+# #p3 <- plotDistributions5(allTT[allTT$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed")
+# p4 <- plotDistributions5(allTT[allTT$SampleAttributes=="Healthy",],"Healthy")
+# print(plot_grid(p1, p2, p4, nrow=3))
+```
+

@@ -1,0 +1,55 @@
+---
+title: "Seq Logo of the CDR regions of the expanded clones"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+library("ggseqlogo")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r}
+
+data(ggseqlogo_sample)
+ggseqlogo( seqs_aa$AKT1, seq_type='aa')
+```
+
+
+```{r}
+
+allPercentages <- data.frame()
+rowAnnotations <- c()
+
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")){
+
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  inClones <- inClones[inClones$NumberOfClonalCells > 9,]
+  
+  inClones <- data.table(inClones)
+
+  inClones[,USType := length(unique(SAMPLETYPE)),by=CLONE]
+  inClones <- data.frame(inClones)
+  inClones <- inClones[inClones$USType > 1,]
+  
+  inClones$JUNCTION_aa <- sapply(inClones$JUNCTION, function(x){return(paste0(translate(s2c(x)), collapse = ""))})
+  
+  uniqeCDR3 <- unique(inClones[,c("CLONE", "JUNCTION_aa")])
+  
+  uniqeCDR3$length <- sapply(uniqeCDR3$JUNCTION_aa, nchar)
+  uniqeCDR3 <- uniqeCDR3[uniqeCDR3$length > 11, ]
+  
+  ggseqlogo( uniqeCDR3$JUNCTION_aa, seq_type='aa')
+  
+}
+
+allPercentages <- allPercentages * 100
+```

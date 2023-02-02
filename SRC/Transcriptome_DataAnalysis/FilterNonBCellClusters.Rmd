@@ -1,0 +1,71 @@
+---
+title: "Filter Non-B cells clusters"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("/home/beraslan/WORKSPACE/BCell/Main.R")
+library(gtools)
+library(RColorBrewer)
+library(calibrate)
+library('sva')
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(liger)
+library(Seurat)
+library(SeuratWrappers)
+reticulate::use_python("/home/beraslan/anaconda3/bin/python", required = T)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+    donorObjects <- readRDS(paste0(dataDir, "/RDSFiles/donorObjects.rds"))
+    selectedClusters <- list("UC3"=c(0,1,2),
+                             "UC10"=c(0,1,2,3,4,5),
+                             "UC15"=c(0,1,2,3,4),
+                             "UC16"=c(0,1,2,3),
+                             "UC17"=c(0,1,2),
+                             "UC18"=c(0,1,2,3),
+                             "UC20"=c(0,1,2,3,4),
+                             "Healthy1"=c(0,1,3),
+                             "Healthy2"=c(0,1,2),
+                             "Healthy3"=c(0,1),
+                             "Healthy4"=c(0,1),
+                             "UC4"=c(0,1),
+                             "UC9"=c(0,1,2,3),
+                             "UC14"=c(0,1,2),
+                             "UC19"=c(0,1,2))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+
+cellSubsets <- list()
+for(i in names(donorObjects)){
+  donObj <- donorObjects[[i]]
+  selClust <-selectedClusters[[i]]
+
+  selCells <- names(donObj$seurat_clusters[which(as.character(donObj$seurat_clusters) %in% as.character(selClust))])
+
+  donObjSub <- subset(donObj, cells=selCells)
+
+  donObjSub <- FindVariableFeatures(donObjSub, selection.method = "vst", nfeatures = 2000)
+
+  donObjSub <- RunPCA(donObjSub, npcs = 50, verbose = FALSE)
+
+  donObjSub <- FindNeighbors( donObjSub, dims = 1:50)
+  donObjSub <- FindClusters( donObjSub, resolution = 0.5)
+
+  donObjSub <- RunUMAP( donObjSub, dims = 1:50)
+
+  print(DimPlot(donObjSub, reduction = "umap", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," seurat clusters"))
+
+   cellSubsets <- lappend(cellSubsets, donObjSub)
+
+}
+names(cellSubsets) <- names(donorObjects)
+saveRDS(cellSubsets, paste0(dataDir, "/RDSFiles/donorObjectsSelectedCells.rds"))
+```
+

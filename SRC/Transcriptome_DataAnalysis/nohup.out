@@ -1,0 +1,985 @@
+
+R version 3.6.1 (2019-07-05) -- "Action of the Toes"
+Copyright (C) 2019 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> rmarkdown::render('~//WORKSPACE/BCell//SRC/Transcriptome_DataAnalysis/InspectCellCycle.Rmd',output_file='InspectCellCycle.html', knit_root_dir='~/WORKSPACE/BCell/')
+
+
+processing file: InspectCellCycle.Rmd
+  |                                                                         |                                                                 |   0%  |                                                                         |.............                                                    |  20%
+  ordinary text without R code
+
+  |                                                                         |..........................                                       |  40%
+label: unnamed-chunk-1 (with options) 
+List of 4
+ $ echo   : logi FALSE
+ $ error  : logi FALSE
+ $ message: logi FALSE
+ $ warning: logi FALSE
+
+Registered S3 method overwritten by 'R.oo':
+  method        from       
+  throw.default R.methodsS3
+Loading required package: BiocGenerics
+Loading required package: parallel
+
+Attaching package: 'BiocGenerics'
+
+The following objects are masked from 'package:parallel':
+
+    clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,
+    clusterExport, clusterMap, parApply, parCapply, parLapply,
+    parLapplyLB, parRapply, parSapply, parSapplyLB
+
+The following objects are masked from 'package:stats':
+
+    IQR, mad, sd, var, xtabs
+
+The following objects are masked from 'package:base':
+
+    anyDuplicated, append, as.data.frame, basename, cbind,
+    colnames, dirname, do.call, duplicated, eval, evalq, Filter,
+    Find, get, grep, grepl, intersect, is.unsorted, lapply, Map,
+    mapply, match, mget, order, paste, pmax, pmax.int, pmin,
+    pmin.int, Position, rank, rbind, Reduce, rownames, sapply,
+    setdiff, sort, table, tapply, union, unique, unsplit, which,
+    which.max, which.min
+
+Loading required package: S4Vectors
+Loading required package: stats4
+
+Attaching package: 'S4Vectors'
+
+The following object is masked from 'package:base':
+
+    expand.grid
+
+Loading required package: IRanges
+Loading required package: XVector
+
+Attaching package: 'Biostrings'
+
+The following object is masked from 'package:base':
+
+    strsplit
+
+Loading required package: ggplot2
+Loading required package: ggseqlogo
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:Biostrings':
+
+    collapse, intersect, setdiff, setequal, union
+
+The following object is masked from 'package:XVector':
+
+    slice
+
+The following objects are masked from 'package:IRanges':
+
+    collapse, desc, intersect, setdiff, slice, union
+
+The following objects are masked from 'package:S4Vectors':
+
+    first, intersect, rename, setdiff, setequal, union
+
+The following objects are masked from 'package:BiocGenerics':
+
+    combine, intersect, setdiff, union
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+corrplot 0.84 loaded
+
+Attaching package: 'seqinr'
+
+The following object is masked from 'package:dplyr':
+
+    count
+
+The following object is masked from 'package:Biostrings':
+
+    translate
+
+Loading required package: Biobase
+Welcome to Bioconductor
+
+    Vignettes contain introductory material; view with
+    'browseVignettes()'. To cite Bioconductor, see
+    'citation("Biobase")', and for packages 'citation("pkgname")'.
+
+
+Attaching package: 'pcaMethods'
+
+The following object is masked from 'package:stats':
+
+    loadings
+
+Loading required package: SingleCellExperiment
+Loading required package: SummarizedExperiment
+Loading required package: GenomicRanges
+Loading required package: GenomeInfoDb
+Loading required package: DelayedArray
+Loading required package: matrixStats
+
+Attaching package: 'matrixStats'
+
+The following objects are masked from 'package:Biobase':
+
+    anyMissing, rowMedians
+
+The following object is masked from 'package:seqinr':
+
+    count
+
+The following object is masked from 'package:dplyr':
+
+    count
+
+Loading required package: BiocParallel
+
+Attaching package: 'DelayedArray'
+
+The following objects are masked from 'package:matrixStats':
+
+    colMaxs, colMins, colRanges, rowMaxs, rowMins, rowRanges
+
+The following object is masked from 'package:Biostrings':
+
+    type
+
+The following objects are masked from 'package:base':
+
+    aperm, apply, rowsum
+
+
+Attaching package: 'SummarizedExperiment'
+
+The following object is masked from 'package:Seurat':
+
+    Assays
+
+
+Attaching package: 'scater'
+
+The following objects are masked from 'package:dplyr':
+
+    arrange, filter, mutate, rename
+
+The following object is masked from 'package:S4Vectors':
+
+    rename
+
+The following object is masked from 'package:stats':
+
+    filter
+
+Package 'mclust' version 5.4.5
+Type 'citation("mclust")' for citing this R package in publications.
+Loading required package: Matrix
+
+Attaching package: 'Matrix'
+
+The following object is masked from 'package:S4Vectors':
+
+    expand
+
+Loading required package: foreach
+Loaded glmnet 2.0-18
+
+Loading required package: data.table
+
+Attaching package: 'data.table'
+
+The following object is masked from 'package:SummarizedExperiment':
+
+    shift
+
+The following object is masked from 'package:GenomicRanges':
+
+    shift
+
+The following objects are masked from 'package:dplyr':
+
+    between, first, last
+
+The following object is masked from 'package:IRanges':
+
+    shift
+
+The following objects are masked from 'package:S4Vectors':
+
+    first, second
+
+Loading required package: magrittr
+
+Attaching package: 'ggpubr'
+
+The following object is masked from 'package:scater':
+
+    mutate
+
+Registered S3 methods overwritten by 'proxy':
+  method               from    
+  print.registry_field registry
+  print.registry_entry registry
+
+Attaching package: 'reshape2'
+
+The following objects are masked from 'package:data.table':
+
+    dcast, melt
+
+
+********************************************************
+Note: As of version 1.0.0, cowplot does not change the
+  default ggplot2 theme anymore. To recover the previous
+  behavior, execute:
+  theme_set(theme_cowplot())
+********************************************************
+
+
+Attaching package: 'cowplot'
+
+The following object is masked from 'package:ggpubr':
+
+    get_legend
+
+
+Attaching package: 'ape'
+
+The following object is masked from 'package:ggpubr':
+
+    rotate
+
+The following objects are masked from 'package:seqinr':
+
+    as.alignment, consensus
+
+The following object is masked from 'package:Biostrings':
+
+    complement
+
+
+Attaching package: 'alakazam'
+
+The following object is masked from 'package:ape':
+
+    getMRCA
+
+Loading required package: stringi
+
+Attaching package: 'Peptides'
+
+The following object is masked from 'package:alakazam':
+
+    charge
+
+  |                                                                         |.......................................                          |  60%
+  ordinary text without R code
+
+  |                                                                         |....................................................             |  80%
+label: unnamed-chunk-2 (with options) 
+List of 6
+ $ echo      : logi FALSE
+ $ error     : logi FALSE
+ $ message   : logi FALSE
+ $ warning   : logi FALSE
+ $ fig.height: num 8
+ $ fig.width : num 15
+
+Warning: The following features are not present in the object: CDCA7, MLF1IP, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, PSRC1, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 0.044
+Picking joint bandwidth of 0.0431
+Picking joint bandwidth of 2.8e-06
+Picking joint bandwidth of 0.0568
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Warning: The following features are not present in the object: CDCA7, DTL, UHRF1, MLF1IP, EXO1, DSCC1, BRIP1, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, CDC25C, PSRC1, NEK2, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 3.8e-06
+Picking joint bandwidth of 2.6e-06
+Picking joint bandwidth of 2.41e-06
+Picking joint bandwidth of 2.6e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+1 singletons identified. 5 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Warning: The following features are not present in the object: TYMS, MCM2, GINS2, CDCA7, DTL, UHRF1, MLF1IP, RAD51, RRM2, CDC45, EXO1, DSCC1, CLSPN, CHAF1B, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: CDK1, UBE2C, BIRC5, TPX2, TOP2A, NDC80, NUF2, MKI67, CENPF, TACC3, FAM64A, CCNB2, CKAP2L, AURKB, BUB1, KIF11, GTSE1, HJURP, CDCA3, CDC20, TTK, CDC25C, KIF2C, DLGAP5, CDCA2, CDCA8, ECT2, KIF23, PSRC1, ANLN, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 2.94e-06
+Picking joint bandwidth of 2.56e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+3 singletons identified. 2 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Warning: The following features are not present in the object: TYMS, MCM2, MCM4, GINS2, CDCA7, DTL, UHRF1, MLF1IP, RAD51AP1, WDR76, RAD51, RRM2, CDC45, EXO1, DSCC1, BLM, CLSPN, CHAF1B, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: CDK1, UBE2C, BIRC5, TPX2, TOP2A, NDC80, NUF2, MKI67, CENPF, TACC3, FAM64A, CCNB2, CKAP2L, AURKB, BUB1, KIF11, GTSE1, HJURP, CDCA3, CDC20, TTK, CDC25C, KIF2C, DLGAP5, CDCA2, CDCA8, ECT2, KIF23, AURKA, PSRC1, ANLN, CENPE, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 3.48e-06
+Picking joint bandwidth of 2.72e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Warning: The following features are not present in the object: MLF1IP, not searching for symbol synonyms
+Picking joint bandwidth of 0.0484
+Picking joint bandwidth of 0.0299
+Picking joint bandwidth of 2.63e-06
+Picking joint bandwidth of 0.061
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+  |                                                                         |.................................................................| 100%
+  ordinary text without R code
+
+
+output file: InspectCellCycle.knit.md
+
+/usr/bin/pandoc +RTS -K512m -RTS InspectCellCycle.utf8.md --to html4 --from markdown+autolink_bare_uris+ascii_identifiers+tex_math_single_backslash --output InspectCellCycle.html --smart --email-obfuscation none --self-contained --standalone --section-divs --template /home/beraslan/R/x86_64-pc-linux-gnu-library/3.6/rmarkdown/rmd/h/default.html --no-highlight --variable highlightjs=1 --variable 'theme:bootstrap' --include-in-header /tmp/RtmpO4nLLD/rmarkdown-str53687709a464.html --mathjax --variable 'mathjax-url:https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML' 
+
+Output created: InspectCellCycle.html
+Warning messages:
+1: In DoHeatmap(serObj, features = top10$gene) :
+  The following features were omitted as they were not found in the scale.data slot for the RNA assay: HSP90B1, HSPA5, SLC3A2, HERPUD1, MZB1, PPIB, ITM2C, MALAT1, CD79A, HSPA1A, HSPA1B, JUN, NR4A1, JUNB
+2: In DoHeatmap(serObj, features = top10$gene) :
+  The following features were omitted as they were not found in the scale.data slot for the RNA assay: HSPA5, SELK, HERPUD1, MALAT1, CD79A, CD38, ITM2C, ZFP36, NR4A1, NFKBIA, IER2, JUNB
+3: In FetchData(object = object, vars = features, slot = slot) :
+  The following requested variables were not found: TOP2A, MKI67
+4: In DoHeatmap(serObj, features = top10$gene) :
+  The following features were omitted as they were not found in the scale.data slot for the RNA assay: TSC22D3, VIM, EZR, JUN, HSP90AB1, FOSB
+5: In FetchData(object = object, vars = features, slot = slot) :
+  The following requested variables were not found: TOP2A, MKI67
+6: In DoHeatmap(serObj, features = top10$gene) :
+  The following features were omitted as they were not found in the scale.data slot for the RNA assay: CD79A, ZFP36L2, XBP1, MALAT1, HSP90AA1, FOS, HSP90AB1, HSPA1A, HSPA1B, DNAJB1
+7: In DoHeatmap(serObj, features = top10$gene) :
+  The following features were omitted as they were not found in the scale.data slot for the RNA assay: CD74, BTG1, JCHAIN, JSRP1, MCL1, PIM2, TSC22D3, HERPUD1, HSP90B1, MZB1, MALAT1
+> 
+> 
+
+R version 3.6.1 (2019-07-05) -- "Action of the Toes"
+Copyright (C) 2019 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> rmarkdown::render('~//WORKSPACE/BCell//SRC/Transcriptome_DataAnalysis/InspectCellCycle.Rmd',output_file='InspectCellCycle.html', knit_root_dir='~/WORKSPACE/BCell/')
+
+
+processing file: InspectCellCycle.Rmd
+  |                                                                         |                                                                 |   0%  |                                                                         |.............                                                    |  20%
+  ordinary text without R code
+
+  |                                                                         |..........................                                       |  40%
+label: unnamed-chunk-1 (with options) 
+List of 4
+ $ echo   : logi FALSE
+ $ error  : logi FALSE
+ $ message: logi FALSE
+ $ warning: logi FALSE
+
+Registered S3 method overwritten by 'R.oo':
+  method        from       
+  throw.default R.methodsS3
+Loading required package: BiocGenerics
+Loading required package: parallel
+
+Attaching package: 'BiocGenerics'
+
+The following objects are masked from 'package:parallel':
+
+    clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,
+    clusterExport, clusterMap, parApply, parCapply, parLapply,
+    parLapplyLB, parRapply, parSapply, parSapplyLB
+
+The following objects are masked from 'package:stats':
+
+    IQR, mad, sd, var, xtabs
+
+The following objects are masked from 'package:base':
+
+    anyDuplicated, append, as.data.frame, basename, cbind,
+    colnames, dirname, do.call, duplicated, eval, evalq, Filter,
+    Find, get, grep, grepl, intersect, is.unsorted, lapply, Map,
+    mapply, match, mget, order, paste, pmax, pmax.int, pmin,
+    pmin.int, Position, rank, rbind, Reduce, rownames, sapply,
+    setdiff, sort, table, tapply, union, unique, unsplit, which,
+    which.max, which.min
+
+Loading required package: S4Vectors
+Loading required package: stats4
+
+Attaching package: 'S4Vectors'
+
+The following object is masked from 'package:base':
+
+    expand.grid
+
+Loading required package: IRanges
+Loading required package: XVector
+
+Attaching package: 'Biostrings'
+
+The following object is masked from 'package:base':
+
+    strsplit
+
+Loading required package: ggplot2
+Loading required package: ggseqlogo
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:Biostrings':
+
+    collapse, intersect, setdiff, setequal, union
+
+The following object is masked from 'package:XVector':
+
+    slice
+
+The following objects are masked from 'package:IRanges':
+
+    collapse, desc, intersect, setdiff, slice, union
+
+The following objects are masked from 'package:S4Vectors':
+
+    first, intersect, rename, setdiff, setequal, union
+
+The following objects are masked from 'package:BiocGenerics':
+
+    combine, intersect, setdiff, union
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+corrplot 0.84 loaded
+
+Attaching package: 'seqinr'
+
+The following object is masked from 'package:dplyr':
+
+    count
+
+The following object is masked from 'package:Biostrings':
+
+    translate
+
+Loading required package: Biobase
+Welcome to Bioconductor
+
+    Vignettes contain introductory material; view with
+    'browseVignettes()'. To cite Bioconductor, see
+    'citation("Biobase")', and for packages 'citation("pkgname")'.
+
+
+Attaching package: 'pcaMethods'
+
+The following object is masked from 'package:stats':
+
+    loadings
+
+Loading required package: SingleCellExperiment
+Loading required package: SummarizedExperiment
+Loading required package: GenomicRanges
+Loading required package: GenomeInfoDb
+Loading required package: DelayedArray
+Loading required package: matrixStats
+
+Attaching package: 'matrixStats'
+
+The following objects are masked from 'package:Biobase':
+
+    anyMissing, rowMedians
+
+The following object is masked from 'package:seqinr':
+
+    count
+
+The following object is masked from 'package:dplyr':
+
+    count
+
+Loading required package: BiocParallel
+
+Attaching package: 'DelayedArray'
+
+The following objects are masked from 'package:matrixStats':
+
+    colMaxs, colMins, colRanges, rowMaxs, rowMins, rowRanges
+
+The following object is masked from 'package:Biostrings':
+
+    type
+
+The following objects are masked from 'package:base':
+
+    aperm, apply, rowsum
+
+
+Attaching package: 'SummarizedExperiment'
+
+The following object is masked from 'package:Seurat':
+
+    Assays
+
+
+Attaching package: 'scater'
+
+The following objects are masked from 'package:dplyr':
+
+    arrange, filter, mutate, rename
+
+The following object is masked from 'package:S4Vectors':
+
+    rename
+
+The following object is masked from 'package:stats':
+
+    filter
+
+Package 'mclust' version 5.4.5
+Type 'citation("mclust")' for citing this R package in publications.
+Loading required package: Matrix
+
+Attaching package: 'Matrix'
+
+The following object is masked from 'package:S4Vectors':
+
+    expand
+
+Loading required package: foreach
+Loaded glmnet 2.0-18
+
+Loading required package: data.table
+
+Attaching package: 'data.table'
+
+The following object is masked from 'package:SummarizedExperiment':
+
+    shift
+
+The following object is masked from 'package:GenomicRanges':
+
+    shift
+
+The following objects are masked from 'package:dplyr':
+
+    between, first, last
+
+The following object is masked from 'package:IRanges':
+
+    shift
+
+The following objects are masked from 'package:S4Vectors':
+
+    first, second
+
+Loading required package: magrittr
+
+Attaching package: 'ggpubr'
+
+The following object is masked from 'package:scater':
+
+    mutate
+
+Registered S3 methods overwritten by 'proxy':
+  method               from    
+  print.registry_field registry
+  print.registry_entry registry
+
+Attaching package: 'reshape2'
+
+The following objects are masked from 'package:data.table':
+
+    dcast, melt
+
+
+********************************************************
+Note: As of version 1.0.0, cowplot does not change the
+  default ggplot2 theme anymore. To recover the previous
+  behavior, execute:
+  theme_set(theme_cowplot())
+********************************************************
+
+
+Attaching package: 'cowplot'
+
+The following object is masked from 'package:ggpubr':
+
+    get_legend
+
+
+Attaching package: 'ape'
+
+The following object is masked from 'package:ggpubr':
+
+    rotate
+
+The following objects are masked from 'package:seqinr':
+
+    as.alignment, consensus
+
+The following object is masked from 'package:Biostrings':
+
+    complement
+
+
+Attaching package: 'alakazam'
+
+The following object is masked from 'package:ape':
+
+    getMRCA
+
+Loading required package: stringi
+
+Attaching package: 'Peptides'
+
+The following object is masked from 'package:alakazam':
+
+    charge
+
+  |                                                                         |.......................................                          |  60%
+  ordinary text without R code
+
+  |                                                                         |....................................................             |  80%
+label: unnamed-chunk-2 (with options) 
+List of 6
+ $ echo      : logi FALSE
+ $ error     : logi FALSE
+ $ message   : logi FALSE
+ $ warning   : logi FALSE
+ $ fig.height: num 8
+ $ fig.width : num 15
+
+Warning: The following features are not present in the object: CDCA7, MLF1IP, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, PSRC1, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 0.044
+Picking joint bandwidth of 0.0431
+Picking joint bandwidth of 2.8e-06
+Picking joint bandwidth of 0.0568
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Warning: The following features are not present in the object: CDCA7, DTL, UHRF1, MLF1IP, EXO1, DSCC1, BRIP1, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, CDC25C, PSRC1, NEK2, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 3.8e-06
+Picking joint bandwidth of 2.6e-06
+Picking joint bandwidth of 2.41e-06
+Picking joint bandwidth of 2.6e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+1 singletons identified. 5 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Warning: The following features are not present in the object: TYMS, MCM2, GINS2, CDCA7, DTL, UHRF1, MLF1IP, RAD51, RRM2, CDC45, EXO1, DSCC1, CLSPN, CHAF1B, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: CDK1, UBE2C, BIRC5, TPX2, TOP2A, NDC80, NUF2, MKI67, CENPF, TACC3, FAM64A, CCNB2, CKAP2L, AURKB, BUB1, KIF11, GTSE1, HJURP, CDCA3, CDC20, TTK, CDC25C, KIF2C, DLGAP5, CDCA2, CDCA8, ECT2, KIF23, PSRC1, ANLN, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 2.94e-06
+Picking joint bandwidth of 2.56e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+3 singletons identified. 2 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Warning: The following features are not present in the object: TYMS, MCM2, MCM4, GINS2, CDCA7, DTL, UHRF1, MLF1IP, RAD51AP1, WDR76, RAD51, RRM2, CDC45, EXO1, DSCC1, BLM, CLSPN, CHAF1B, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: CDK1, UBE2C, BIRC5, TPX2, TOP2A, NDC80, NUF2, MKI67, CENPF, TACC3, FAM64A, CCNB2, CKAP2L, AURKB, BUB1, KIF11, GTSE1, HJURP, CDCA3, CDC20, TTK, CDC25C, KIF2C, DLGAP5, CDCA2, CDCA8, ECT2, KIF23, AURKA, PSRC1, ANLN, CENPE, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 3.48e-06
+Picking joint bandwidth of 2.72e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Warning: The following features are not present in the object: MLF1IP, not searching for symbol synonyms
+Picking joint bandwidth of 0.0484
+Picking joint bandwidth of 0.0299
+Picking joint bandwidth of 2.63e-06
+Picking joint bandwidth of 0.061
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+Warning: The following features are not present in the object: CDCA7, MLF1IP, RAD51, CDC45, EXO1, DSCC1, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, CKAP2L, TTK, CDC25C, KIF2C, KIF23, PSRC1, ANLN, NEK2, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.12e-06
+Picking joint bandwidth of 1.93e-06
+Picking joint bandwidth of 1.96e-06
+Picking joint bandwidth of 1.94e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+3 singletons identified. 6 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+Warning: The following features are not present in the object: CDCA7, MLF1IP, not searching for symbol synonyms
+Warning: The following features are not present in the object: PSRC1, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.16e-06
+Picking joint bandwidth of 1.85e-06
+Picking joint bandwidth of 1.87e-06
+Picking joint bandwidth of 1.92e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+Calculating cluster 6
+Calculating cluster 7
+Warning: The following features are not present in the object: CDCA7, MLF1IP, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, PSRC1, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.47e-06
+Picking joint bandwidth of 2.13e-06
+Picking joint bandwidth of 2.15e-06
+Picking joint bandwidth of 2.16e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Warning: The following features are not present in the object: CDCA7, DTL, UHRF1, MLF1IP, RAD51, RRM2, CDC45, EXO1, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: CDK1, BIRC5, TPX2, TOP2A, NDC80, NUF2, FAM64A, CCNB2, CKAP2L, AURKB, KIF11, HJURP, TTK, CDC25C, KIF2C, DLGAP5, CDCA2, CDCA8, ECT2, KIF23, PSRC1, ANLN, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 2.02e-06
+Picking joint bandwidth of 1.85e-06
+Picking joint bandwidth of 1.8e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+2 singletons identified. 7 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+Calculating cluster 6
+Warning: The following features are not present in the object: CDCA7, UHRF1, MLF1IP, RAD51, CDC45, EXO1, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, CKAP2L, HJURP, TTK, KIF2C, KIF23, PSRC1, ANLN, NEK2, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.33e-06
+Picking joint bandwidth of 1.97e-06
+Picking joint bandwidth of 2.04e-06
+Picking joint bandwidth of 1.98e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+3 singletons identified. 6 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+Warning: The following features are not present in the object: CDCA7, DTL, UHRF1, MLF1IP, RAD51, RRM2, CDC45, EXO1, DSCC1, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: BIRC5, TPX2, NDC80, NUF2, FAM64A, CKAP2L, HJURP, TTK, CDC25C, KIF2C, DLGAP5, CDCA8, KIF23, PSRC1, ANLN, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 2.53e-06
+Picking joint bandwidth of 1.99e-06
+Picking joint bandwidth of 2.11e-06
+Picking joint bandwidth of 2e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+1 singletons identified. 5 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Warning: The following features are not present in the object: CDCA7, DTL, UHRF1, MLF1IP, RAD51, RRM2, CDC45, EXO1, DSCC1, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: CDK1, UBE2C, BIRC5, TPX2, TOP2A, NDC80, NUF2, MKI67, CENPF, FAM64A, CCNB2, CKAP2L, AURKB, KIF11, GTSE1, HJURP, TTK, CDC25C, KIF2C, DLGAP5, CDCA2, CDCA8, KIF23, PSRC1, ANLN, NEK2, GAS2L3, CENPA, not searching for symbol synonyms
+Picking joint bandwidth of 3.21e-06
+Picking joint bandwidth of 2.42e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+2 singletons identified. 4 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Warning: The following features are not present in the object: CDCA7, MLF1IP, DSCC1, BRIP1, not searching for symbol synonyms
+Warning: The following features are not present in the object: PSRC1, NEK2, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 1.96e-06
+Picking joint bandwidth of 1.78e-06
+Picking joint bandwidth of 1.86e-06
+Picking joint bandwidth of 1.8e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+4 singletons identified. 6 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+Calculating cluster 5
+Warning: The following features are not present in the object: CDCA7, MLF1IP, not searching for symbol synonyms
+Warning: The following features are not present in the object: GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.95e-06
+Picking joint bandwidth of 2.61e-06
+Picking joint bandwidth of 2.29e-06
+Picking joint bandwidth of 0.0215
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+1 singletons identified. 3 final clusters.
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Warning: The following features are not present in the object: CDCA7, MLF1IP, BRIP1, not searching for symbol synonyms
+Warning: The following features are not present in the object: PSRC1, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.37e-06
+Picking joint bandwidth of 2.28e-06
+Picking joint bandwidth of 2.15e-06
+Picking joint bandwidth of 2.42e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Warning: The following features are not present in the object: CDCA7, UHRF1, MLF1IP, EXO1, DSCC1, CHAF1B, BRIP1, E2F8, not searching for symbol synonyms
+Warning: The following features are not present in the object: FAM64A, TTK, KIF23, PSRC1, ANLN, NEK2, GAS2L3, not searching for symbol synonyms
+Picking joint bandwidth of 2.5e-06
+Picking joint bandwidth of 2.31e-06
+Picking joint bandwidth of 2.33e-06
+Picking joint bandwidth of 2.34e-06
+Computing nearest neighbor graph
+Computing SNN
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating cluster 0
+Calculating cluster 1
+Calculating cluster 2
+Calculating cluster 3
+Calculating cluster 4
+  |                                                                         |.................................................................| 100%
+  ordinary text without R code
+
+
+output file: InspectCellCycle.knit.md
+
+/usr/bin/pandoc +RTS -K512m -RTS InspectCellCycle.utf8.md --to html4 --from markdown+autolink_bare_uris+ascii_identifiers+tex_math_single_backslash --output InspectCellCycle.html --smart --email-obfuscation none --self-contained --standalone --section-divs --template /home/beraslan/R/x86_64-pc-linux-gnu-library/3.6/rmarkdown/rmd/h/default.html --no-highlight --variable highlightjs=1 --variable 'theme:bootstrap' --include-in-header /tmp/RtmpNbNnaZ/rmarkdown-str7681554cccc4.html --mathjax --variable 'mathjax-url:https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML' 
+
+Output created: InspectCellCycle.html
+There were 20 warnings (use warnings() to see them)
+> 
+> 

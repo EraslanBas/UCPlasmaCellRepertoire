@@ -1,0 +1,369 @@
+---
+title: "Quality Control and Combined Sample Preparation"
+output: html_document
+---
+
+
+1) Filter cells that have unique gene counts less than 300.
+
+- Low-quality cells or empty droplets will often have very few genes
+
+2)  Filter cells that have >5% mitochondrial counts
+
+- Low-quality / dying cells often exhibit extensive mitochondrial contamination
+
+3) Filter genes that are expressed in less than 10 cells.
+
+
+4) UMI counts are log normalized. That is, feature counts for each cell are divided by the total counts for that cell and multiplied by the scale.factor. This is then natural-log transformed using log1p.
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r error=FALSE, message=TRUE, warning=FALSE, echo=F, fig.width=10, fig.height=5}
+ samp <- list()
+
+ for(i in 1:length(sampleNames)){
+  print(sampleNames[[i]])
+   k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampleNames[[i]]))
+   serObj <- CreateSeuratObject(counts = k, project = sampleNames[[i]])
+   serObj$stim <- sampleAttributes[[i]]
+   serObj$donorID <- donorID[[i]]
+
+   serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+   samp <- lappend(samp, serObj)
+ }
+
+ saveRDS(samp, paste0(dataDir, "/RDSFiles/UnfilteredData.rds"))
+
+```
+
+Filter out cells which do not have a matched V(D)J barcode:
+```{r}
+samp <- list()
+
+for(i in 1:length(sampleNames)){
+  print(sampleNames[[i]])
+   k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampleNames[[i]]))
+   serObj <- CreateSeuratObject(counts = k, project = sampleNames[[i]])
+   serObj$stim <- sampleAttributes[[i]]
+   serObj$donorID <- donorID[[i]]
+
+   vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampleNames[i],"/all_contig_annotations.csv"),
+                         stringsAsFactors = F)
+   cellB <- unique(colnames(serObj@assays$RNA))
+   #vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+   vdjCellB <- unique(vdjAnnot$barcode)
+   cellB <- cellB[cellB %in% vdjCellB]
+   serObj <- subset(x=serObj, cells = cellB)
+
+   serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+   samp <- lappend(samp, serObj)
+ }
+
+ saveRDS(samp, paste0(dataDir, "/RDSFiles/BCells_unfilteredTranscriptome.rds"))
+```
+
+```{r error=FALSE, message=TRUE, warning=FALSE, echo=F}
+  samp <- readRDS(paste0(dataDir, "/RDSFiles/BCells_unfilteredTranscriptome.rds"))
+
+  noOfCells <- sapply(samp, function(x){return(ncol(x@assays$RNA))})
+
+  df=data.frame(noOfCells=noOfCells,
+                 sampleNames=sampleNames,
+                 sampleAttributes=factor(sampleAttributesPrint, levels = c("UC Inflamed", "UC Non-Inflamed", "Healthy")),
+                 donorID=as.factor(donorID),
+                 index=1:length(sampleNames))
+```
+
+
+```{r error=FALSE, message=F, warning=FALSE, echo=F}
+
+  genePlotsL <- list()
+  umiPlotsL <- list()
+  mtPercentPlotsL <- list()
+  for(elem in levels(df$sampleAttributes)){
+    
+    print(paste0("######################### Samples ", elem, " #################################"))
+    sampTmp <- samp[df[df$sampleAttributes==elem,"index"]]
+    
+    genePlots <- list()
+    umiPlots <- list()
+    mtPercentPlots <- list()
+    i=0
+    
+    for(serObj in sampTmp){
+      gPlt <- VlnPlot(serObj, features = c("nFeature_RNA"), log = T, pt.size = 0.05, cols = "red")+
+                             theme(legend.position = "None")+xlab("")+ggtitle("")+
+        scale_y_continuous(breaks = c(300,500,1000,3000, 4000), 
+                           labels =  c(300,500, 1000,3000, 4000))+ylim(c(0,4000))+
+        theme( axis.text.y=element_text(size=18), axis.title.y = element_text(size=20))+
+              geom_hline(yintercept = 300, color="blue")
+
+      
+      uPlt <- VlnPlot(serObj, features = c("nCount_RNA"), log = T, pt.size = 0.05, cols = "blue")+
+                              theme(legend.position = "None")+xlab("")+ggtitle("")+
+        scale_y_continuous(breaks = c(1000,3000, 10000,30000),
+                           labels =  c(1000,3000, 10000,30000))+ylim(c(0,40000))+
+        theme( axis.text.y=element_text(size=18), axis.title.y = element_text(size=20))
+       
+      mptPlt <- VlnPlot(serObj, features = c("percent.mt"), log = T, pt.size = 0.05, cols="darkgreen")+
+                                theme(legend.position = "None")+xlab("")+ggtitle("")+
+        scale_y_continuous(breaks = c(1,5,20,50,80), 
+                           labels = c(1,5,20,50,80))+ylim(c(0,80))+
+        geom_hline(yintercept = 5, color="blue")+
+        theme( axis.text.y=element_text(size=18), axis.title.y = element_text(size=20))
+      
+      if(i==0){
+        gPlt <- gPlt+ylab("Number of genes per cell")
+        uPlt <- uPlt+ylab("Total number of UMIs per cell")
+        mptPlt <- mptPlt+ylab("Percentage of mitochondrial \n UMI count per cell")
+        i <- i+1
+      }
+      genePlots <- lappend(genePlots, gPlt)
+      umiPlots <- lappend(umiPlots, uPlt)
+      mtPercentPlots <- lappend(mtPercentPlots, mptPlt)
+      
+       print(paste0("Percent of mitochrondrial UMI counts for sample ",serObj@project.name))
+       print(summary(serObj$percent.mt))
+       print(paste0("Number of gene counts for sample ",serObj@project.name))
+       print(summary(serObj$nFeature_RNA))
+       print(paste0("Number of UMI counts for sample ",serObj@project.name))
+       print(summary(serObj$nCount_RNA))
+       
+       plot1 <- FeatureScatter(serObj, feature1 = "nCount_RNA", feature2 = "percent.mt")+
+         theme(legend.position='top')+
+         geom_point(alpha = 1/10, size=0.2)+ggtitle(serObj@project.name)
+       plot2 <- FeatureScatter(serObj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")+
+         theme(legend.position='top')+
+         geom_point(alpha = 1/10, size=0.2)+ggtitle(serObj@project.name)
+       print(CombinePlots(plots = list(plot1, plot2)))
+    }
+    
+    genePlotsL <- lappend(genePlotsL, CombinePlots(plots = genePlots, ncol = length(genePlots)))
+    umiPlotsL <- lappend(umiPlotsL, CombinePlots(plots = umiPlots, ncol = length(umiPlots)))
+    mtPercentPlotsL <- lappend(mtPercentPlotsL, CombinePlots(plots = mtPercentPlots, ncol = length(mtPercentPlots)))
+  }
+  
+  names(genePlotsL) <- levels(df$sampleAttributes)
+  names(umiPlotsL) <- levels(df$sampleAttributes)
+  names(mtPercentPlotsL) <- levels(df$sampleAttributes)
+```
+
+```{r fig.width=25, fig.height=5}
+   for(elem in levels(df$sampleAttributes)){
+    print(paste0("######################### Samples ", elem, " #################################"))
+     print(genePlotsL[[elem]])
+     print(umiPlotsL[[elem]])
+     print(mtPercentPlotsL[[elem]])
+   }
+```
+
+```{r}
+for(i in 1:length(sampleNames)){
+ print(sampleNames[[i]])
+  k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampleNames[[i]]))
+}
+```
+
+```{r error=FALSE, message=F, warning=FALSE, echo=F}
+samples2 <- list()
+
+for(i in 1:length(sampleNames)){
+  print(sampleNames[[i]])
+  k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampleNames[[i]]))
+  colnames(k) <- paste0(colnames(k), "_", samples$SampleIdentifier[[i]])
+  ### Keep those cells with at least 300 genes and those cells that are expressed in at least 10 cells
+  serObj <- CreateSeuratObject(counts = k, project = sampleNames[[i]], min.features=300, min.cells = 10)
+  serObj$stim <- samples$SampleAttributes[[i]]
+  serObj$donorID <- samples$DonorID[[i]]
+  serObj$batch <- samples$Lane[[i]]
+  serObj$position <- samples$Position[[i]]
+  serObj$canonicalSampleName <- samples$CanonicalSampleName[[i]]
+  serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+
+  vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampleNames[i],"/filtered_contig_annotations.csv"),
+                         stringsAsFactors = F)
+  cellB <- unique(colnames(serObj@assays$RNA))
+  vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+  vdjCellB <- paste0(vdjCellB,  "_", samples$SampleIdentifier[[i]])
+  cellB <- cellB[cellB %in% vdjCellB]
+  serObj <- subset(x=serObj, cells = cellB)
+
+  allGenes <- rownames(serObj@assays$RNA)
+  mtGenes <- allGenes[grep("^MT-", rownames(serObj@assays$RNA))]
+  otherGenes <- allGenes[allGenes %ni% mtGenes]
+  serObj <- subset(x=serObj, features = otherGenes)
+
+  serObj <- subset(serObj, subset =  percent.mt < 5)
+
+  serObj <- NormalizeData(serObj, verbose = FALSE)
+  serObj <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 2000)
+  samples2 <- lappend(samples2, serObj)
+}
+
+names(samples2) <- sampleNames
+saveRDS(samples2, paste0(dataDir, "/RDSFiles/allSamples.rds"))
+```
+
+
+
+```{r}
+  samples3 <- list()
+  samples <- samples[samples$Use==1,]
+
+  for(elem in unique((samples$Replicates))){
+    
+    sampsTemp <- samples[samples$Replicates == elem ,]
+    
+    fTemp = data.frame()
+    
+    canonicalSampleName = sampsTemp[1,"CanonicalSampleName"]
+    print(canonicalSampleName)
+    
+    print(sampsTemp$SampleNames[[1]])
+    allMatrix <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampsTemp$SampleNames[[1]]))
+    colnames(allMatrix) <- paste0(colnames(allMatrix), "_", sampsTemp$SampleIdentifier[[1]])
+    cellB <- unique(colnames(allMatrix))
+
+    vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampsTemp$SampleNames[[1]],"/filtered_contig_annotations.csv"),
+                         stringsAsFactors = F)
+    vdjCellB <- unique(colnames(allMatrix))
+    vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+    vdjCellB <- paste0(vdjCellB,  "_", sampsTemp$SampleIdentifier[[1]])
+    cellB <- cellB[cellB %in% vdjCellB]
+    allMatrix <- allMatrix[,cellB]
+    
+    if(length(sampsTemp$SampleNames) > 1){
+        for(i in 2:length(sampsTemp$SampleNames)){
+           print(sampsTemp$SampleNames[[i]])
+           k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampsTemp$SampleNames[[i]]))
+           colnames(k) <- paste0(colnames(k), "_", sampsTemp$SampleIdentifier[[i]])
+          
+           vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampsTemp$SampleNames[[i]],"/filtered_contig_annotations.csv"),
+                             stringsAsFactors = F)
+           cellB <- unique(colnames(k))
+           vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+           vdjCellB <- paste0(vdjCellB,  "_", sampsTemp$SampleIdentifier[[i]])
+           cellB <- cellB[cellB %in% vdjCellB]
+           k <- k[,cellB]
+          
+           allMatrix <- cbind(allMatrix, k)
+         }
+    }
+    
+    serObj <- CreateSeuratObject(counts = allMatrix, project = canonicalSampleName, min.features=300, min.cells = 20)
+    serObj$stim <- sampsTemp$SampleAttributes[[1]]
+    serObj$donorID <- sampsTemp$DonorID[[1]]
+    serObj$batch <- sampsTemp$Lane[[1]]
+    serObj$position <- sampsTemp$Position[[1]]
+    serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+
+    allGenes <- rownames(serObj@assays$RNA)
+    mtGenes <- allGenes[grep("^MT-", rownames(serObj@assays$RNA))]
+    otherGenes <- allGenes[allGenes %ni% mtGenes]
+    serObj <- subset(x=serObj, features = otherGenes)
+
+    serObj <- subset(serObj, subset =  percent.mt < 5)
+
+    serObj <- NormalizeData(serObj, verbose = FALSE)
+    serObj <- FindVariableFeatures(serObj,  nfeatures = 2000)
+
+    samples3 <- lappend(samples3, serObj)
+
+  }
+ 
+   names(samples3) <- unique(samples$CanonicalSampleName)
+   saveRDS(samples3, paste0(dataDir, "/RDSFiles/allSamplesReplicatesMerged.rds"))
+```
+
+Gene count, UMI count and MT genes' UMI count distributions after QC filtering:
+
+```{r error=FALSE, message=F, warning=FALSE, echo=F}
+  samples2 <- readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+  genePlotsL <- list()
+  umiPlotsL <- list()
+  mtPercentPlotsL <- list()
+  for(elem in levels(df$sampleAttributes)){
+
+    print(paste0("######################### Samples ", elem, " #################################"))
+    sampTmp <- samples2[df[df$sampleAttributes==elem,"index"]]
+
+    genePlots <- list()
+    umiPlots <- list()
+    mtPercentPlots <- list()
+    i=0
+
+    for(serObj in sampTmp){
+      gPlt <- VlnPlot(serObj, features = c("nFeature_RNA"), log = T, pt.size = 0.05, cols = "red")+
+                             theme(legend.position = "None")+xlab("")+ggtitle("")+
+       scale_y_continuous(breaks = c(300,500,1000,3000, 4000), 
+                           labels =  c(300,500, 1000,3000, 4000))+ylim(c(0,4000))+
+        theme( axis.text.y=element_text(size=11), axis.title.y = element_text(size=15))
+
+      uPlt <- VlnPlot(serObj, features = c("nCount_RNA"), log = T, pt.size = 0.05, cols = "blue")+
+                              theme(legend.position = "None")+xlab("")+ggtitle("")+
+        scale_y_continuous(breaks = c(300, 1000,3000, 10000,30000),
+                           labels =  c(300, 1000,3000, 10000,30000))+ylim(c(0,40000))+
+        theme( axis.text.y=element_text(size=11), axis.title.y = element_text(size=15))
+      
+
+      mptPlt <- VlnPlot(serObj, features = c("percent.mt"), log = T, pt.size = 0.05, cols="darkgreen")+
+                                theme(legend.position = "None")+xlab("")+ggtitle("")+
+        scale_y_continuous(breaks = c(1,5,10,100),
+                           labels = c(1,5,10,100))+
+        theme( axis.text.y=element_text(size=11), axis.title.y = element_text(size=15))
+      
+      if(i==0){
+        gPlt <- gPlt+ylab("Number of genes per cell")
+        uPlt <- uPlt+ylab("Total number of UMIs per cell")
+        mptPlt <- mptPlt+ylab("Percentage of mitochondrial genes per cell")
+        i <- i+1
+      }
+      genePlots <- lappend(genePlots, gPlt)
+      umiPlots <- lappend(umiPlots, uPlt)
+      mtPercentPlots <- lappend(mtPercentPlots, mptPlt)
+    }
+
+    genePlotsL <- lappend(genePlotsL, CombinePlots(plots = genePlots, ncol = length(genePlots)))
+    umiPlotsL <- lappend(umiPlotsL, CombinePlots(plots = umiPlots, ncol = length(umiPlots)))
+    mtPercentPlotsL <- lappend(mtPercentPlotsL, CombinePlots(plots = mtPercentPlots, ncol = length(mtPercentPlots)))
+  }
+
+  names(genePlotsL) <- levels(df$sampleAttributes)
+  names(umiPlotsL) <- levels(df$sampleAttributes)
+  names(mtPercentPlotsL) <- levels(df$sampleAttributes)
+```
+
+```{r fig.width=20, fig.height=5}
+   for(elem in levels(df$sampleAttributes)){
+    print(paste0("######################### Samples ", elem, " #################################"))
+     print(genePlotsL[[elem]])
+     print(umiPlotsL[[elem]])
+     print(mtPercentPlotsL[[elem]])
+   }
+```
+
+```{r error=FALSE, message=F, warning=FALSE, echo=F, fig.width=10}
+  samples2 <- readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+  noOfCells <- sapply(samples2, function(x){return(ncol(x@assays$RNA))})
+
+  df=data.frame(noOfCells=noOfCells,
+                 sampleNames=sampleNames,
+                 sampleAttributes=factor(sampleAttributesPrint,
+                                         levels = c("UC Inflamed", "UC Non-Inflamed", "Healthy")),
+                 donorID=as.factor(donorID),
+                 index=1:length(sampleNames))
+
+  ggplot(data=df, aes(x=sampleNames, y=noOfCells, fill=donorID)) +
+    geom_bar(stat="identity")+
+    facet_wrap( ~ sampleAttributes, scales='free_x', nrow = 1)+
+    scale_fill_brewer(palette = "Paired")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    xlab("Sample names")+ylab("Matched number of cells after QC")+
+    theme(legend.position = "right")
+
+```

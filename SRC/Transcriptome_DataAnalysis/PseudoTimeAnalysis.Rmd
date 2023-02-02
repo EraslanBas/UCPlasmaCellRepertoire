@@ -1,0 +1,234 @@
+---
+title: "Pseudotime Analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("/home/beraslan/WORKSPACE/BCell/Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+library(monocle3)
+library(dplyr)
+library(SeuratWrappers)
+library(SeuratData)
+
+```
+
+```{r}
+InstallData("hcabm40k")
+data("hcabm40k")
+
+
+integrated <- hcabm40k$MantonBM1
+
+integrated <- ScaleData(integrated)
+integrated <- RunPCA(integrated)
+integrated <- RunUMAP(integrated, dims = 1:30, reduction.name = "UMAP")
+integrated <- FindNeighbors(integrated, dims = 1:30)
+integrated <- FindClusters(integrated)
+DimPlot(integrated, group.by = c("orig.ident", "ident"))
+
+```
+
+
+```{r}
+#allSamples <- readRDS(paste0("/home/beraslan/WORKSPACE/BCell/DATA/allSamplesCombined_selectedDonors.rds"))
+#allContigs <- readRDS(paste0("/home/beraslan/WORKSPACE/BCell/DATA/allContigsTemp_SelectedDonors.rds"))
+
+serObj <- readRDS(paste0(dataDir, "/RDSFiles/allSamplesCombined_2.rds"))
+
+serObj <- subset(serObj, cells=names(serObj$seurat_clusters[serObj$seurat_clusters %in% 0:10]))
+serObj$seurat_clusters <- droplevels(serObj$seurat_clusters)
+
+
+allSamples <- subset(allSamples, cells=allContigs$CELL)
+allContigs <- allContigs[colnames(allSamples@assays$RNA),]
+allSamples$C_CALL <- allContigs$C_CALL
+allSamples$C_CALL_LIGHT <- allContigs$C_CALL_LIGHT
+```
+
+```{r}
+allSamples.cds <- as.cell_data_set(serObj)
+
+```
+
+
+```{r}
+varGenes <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 2000)
+
+top2000 <- head(VariableFeatures(varGenes), 2000)
+```
+
+```{r}
+allSamples.cds <- allSamples.cds[top2000,]
+```
+
+```{r}
+
+allSamples.cds <- cluster_cells(cds = allSamples.cds, reduction_method = "UMAP")
+
+```
+
+```{r}
+plot_cells(allSamples.cds, color_cells_by = "seurat_clusters")
+
+```
+
+```{r}
+DelayedArray:::set_verbose_block_processing(TRUE)
+options(DelayedArray.block.size=1000e8)
+
+
+```
+
+```{r}
+allSamples.cds <- learn_graph(cds=allSamples.cds, use_partition = F, verbose = F, close_loop = F)
+
+```
+
+```{r}
+allSamples.cds <- order_cells(allSamples.cds, reduction_method = "UMAP", root_cells = c("AAACGGGGTGGCCCTA_H111"))
+
+```
+
+```{r}
+plot_cells(allSamples.cds, color_cells_by = "pseudotime", label_cell_groups = FALSE, label_leaves = FALSE, label_branch_points = T)
+```
+
+
+```{r}
+DimPlot(allSamples)
+```
+
+```{r}
+
+sample_sheet= data.frame(sampleName = allSamples$sampleName,
+                         donorID = allSamples$donorID,
+                         sampleType = allSamples$stim,
+                         seuratClusters = allSamples$seurat_clusters,
+                         #C_CALL = allSamples$C_CALL,
+                         nGenes = allSamples$nFeature_RNA)
+#pd <- new("AnnotatedDataFrame", data = sample_sheet)
+
+geneDF = data.frame(gene_short_name = rownames(allSamples@assays$RNA))
+rownames(geneDF) <- geneDF$gene_short_name
+#fd <- new("AnnotatedDataFrame", data = geneDF)
+```
+
+```{r}
+# cds <- newCellDataSet(s(GetAssayData(allSamples@assays$raw), "sparseMatrix"),
+#                       phenoData = pd,
+#                       featureData = fd,
+#                       lowerDetectionLimit = 0.5,
+#                       expressionFamily = negbinomial())
+cds <- new_cell_data_set(as.matrix(GetAssayData(allSamples@assays$raw)),
+                         cell_metadata = sample_sheet,
+                         gene_metadata = geneDF)
+cds <- preprocess_cds(cds, num_dim = 100)
+plot_pc_variance_explained(cds)
+
+```
+
+```{r}
+# cds <- estimateSizeFactors(cds)
+# cds <- estimateDispersions(cds)
+# cds <- detectGenes(cds, min_expr = 0.1)
+# 
+# print(head(fData(cds)))
+# expressed_genes <- row.names(subset(fData(cds),
+#     num_cells_expressed >= 100))
+```
+
+```{r}
+cds <- cds[expressed_genes,]
+disp_table <- dispersionTable(cds)
+ordering_genes <- subset(disp_table, mean_expression >= 0.2)
+
+```
+
+```{r}
+cds <- setOrderingFilter(cds, ordering_genes)
+plot_ordering_genes(cds)
+
+```
+
+```{r}
+cds <- reduceDimension(cds)
+cds <- orderCells(cds)
+saveRDS(cds, paste0(dataDir, "/RDSFiles/pseudotime_COVID.rds"))
+
+```
+
+```{r}
+```
+
+```{r}
+plot_cell_trajectory(cds, color_by = "C_CALL", cell_size = 0.5)
+
+```
+
+```{r}
+plot_cell_trajectory(cds, color_by = "State", cell_size = 0.5)
+```
+
+```{r}
+cds <- orderCells(cds, root_state = "4")
+```
+
+```{r}
+plot_cell_trajectory(cds, color_by = "Pseudotime", cell_size = 0.5)
+```
+
+```{r}
+plot_cell_trajectory(cds, color_by = "C_CALL", cell_size = 0.5)
+```
+
+```{r fig.height=3, fig.width=15}
+plot_cell_trajectory(cds, color_by = "State", cell_size = 0.5) +
+    facet_wrap(~C_CALL, nrow = 1)
+```
+
+```{r}
+disp_table <- dispersionTable(cds)
+ordering_genes <- subset(disp_table,
+                  mean_expression >= 0.5 &
+                  dispersion_empirical >= 1 * dispersion_fit)$gene_id
+```
+
+```{r}
+cds_subset <- cds[as.character(ordering_genes[1:10]),]
+
+```
+
+```{r}
+diff_test_res <- differentialGeneTest(cds_subset,
+fullModelFormulaStr = "~sm.ns(Pseudotime)")
+```
+
+```{r}
+diff_test_res[,c("gene_short_name", "pval", "qval")]
+
+```
+
+```{r fig.height=15, fig.width=10}
+plot_genes_in_pseudotime(cds_subset, color_by = "State")
+```
+
+```{r}
+sig_gene_names <- row.names(subset(diff_test_res, qval < 0.1))
+plot_pseudotime_heatmap(cds_subset[sig_gene_names,],
+                num_clusters = 3,
+                cores = 1,
+                show_rownames = T)
+```
+
+
+

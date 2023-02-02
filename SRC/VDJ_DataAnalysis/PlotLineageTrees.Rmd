@@ -1,0 +1,75 @@
+---
+title: 'Lineage trees of expanded clones'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("treeio")
+library("ggtree")
+library("phytools")
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=25, fig.height=8}
+plotLineageTrees <- function(sampleName){
+   Clones <- as.data.table(read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/HeavyAA_Model/filtered_single_light_heavy_paired_clone-pass.tab"),
+                                      sep="\t",
+                                      header=TRUE,
+                                      stringsAsFactors = F))
+   Clones[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+   Clones <- Clones[order(-NumberOfClonalCells),]
+   Clones <- Clones[Clones$NumberOfClonalCells > 4,]
+   
+   if(nrow(Clones)>2){
+        Clones$CDR3_Heavy <- sapply(Clones$JUNCTION, function(x){return(paste(translate(s2c(x)),  collapse=""))})
+ 
+        for(elem in unique(Clones$CLONE)[1:min(4, length(unique(Clones$CLONE)))]){
+          print(paste0("Clone ", elem))
+          cellsOfClone <- Clones[Clones$CLONE == elem,]
+          myTree <- read.tree(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/HeavyAA_Model/HeavyAA_Model/",elem,".fasta_igphyml_tree_HeavyAA.txt"))
+          myTree <- ggtree::reroot(myTree, which(myTree$tip.label == paste0(elem,"_GERM")))
+          myTree$tip.label <- sapply(myTree$tip.label, function(x){strsplit(x,"_contig")[[1]][1]})
+          tp <- as.data.frame(cellsOfClone[,c("CELL", "CDR3_Heavy", "C_CALL", "C_CALL_LIGHT")])
+          
+          tp$C_CALL_LIGHT <- sapply(tp$C_CALL_LIGHT, function(x){substr(x,1,3)})
+          tp <- rbind(tp, list(paste0(elem,"_GERM"), paste0(elem,"_GERM"), unique(tp$C_CALL)[[1]], unique(tp$C_CALL_LIGHT)[[1]]))
+          
+          rownames(tp) <- tp$CELL
+          tipLabelOrder <- myTree$tip.label
+          myTree$tip.label <- tp[myTree$tip.label, "C_CALL"]
+
+          df <- data.frame(tip.label=myTree$tip.label,
+                           cellID= tipLabelOrder,
+                           IgIsoHeavy = as.factor(tp[tipLabelOrder, "C_CALL"]),
+                           IgIsoLight = as.factor(tp[tipLabelOrder, "C_CALL_LIGHT"]))
+
+
+            
+          p <- ggtree(myTree) +theme_tree2()
+          
+          p <- p %<+% df + geom_tiplab(aes(x=branch, color=IgIsoHeavy), size=3, vjust=-1.5) +
+               geom_tippoint(aes( shape=IgIsoLight), alpha=0.25, size=5)+
+               theme(legend.position = "right")+geom_rootedge()+xlim(c(0,sum(myTree$edge.length)+(max(myTree$edge.length)-min(myTree$edge.length))/5))
+          
+          print(p+ggtitle(paste0(sampleName, ", clone:  ", elem, " which has ",cellsOfClone$NumberOfClonalCells," cells")))
+     }
+   }
+
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=8}
+df=data.frame( sampleNames=sampleNames,
+                 sampleAttributes=sampleAttributesPrint,
+                 donorID=as.factor(donorID), stringsAsFactors = F)
+
+df <- df[df$sampleAttributes == "UC Inflamed",]
+for(sampleName in df$sampleNames){
+  print(sampleName)
+  plotLineageTrees(sampleName)
+  
+}
+```
+

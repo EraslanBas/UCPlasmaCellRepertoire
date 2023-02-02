@@ -1,0 +1,105 @@
+---
+title: "Summarized Repertoire Analysis 4"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  df=data.frame( sampleNames=sampleNames,
+                 sampleAttributes=sampleAttributesPrint,
+                 donorID=as.factor(donorID), stringsAsFactors = F)
+```
+
+```{r}
+calculateSlectionPressure <- function(contigs, sampleType){
+  clones <- collapseClones(contigs,
+                           regionDefinition=IMGT_V_BY_REGIONS, 
+                           sequenceColumn="SEQUENCE_IMGT",
+                           germlineColumn="GERMLINE_IMGT",
+                           method="thresholdedFreq",
+                           minimumFrequency=0.6,
+                           includeAmbiguous=FALSE, 
+                           breakTiesStochastic=FALSE, 
+                         nproc=1)
+  
+  # Count observed mutations and append MU_COUNT columns to the output
+  observed <- observedMutations(clones, 
+                              sequenceColumn="CLONAL_SEQUENCE",
+                              germlineColumn="CLONAL_GERMLINE",
+                              regionDefinition=IMGT_V_BY_REGIONS, nproc=1)
+  # Count expected mutations and append MU_EXPECTED columns to the output
+  expected <- expectedMutations(observed, 
+                              sequenceColumn="CLONAL_SEQUENCE",
+                              germlineColumn="CLONAL_GERMLINE",
+                              targetingModel=HH_S5F,
+                              regionDefinition=IMGT_V_BY_REGIONS, nproc=1)
+  
+  expected$sampleType <- sampleType
+  
+  return(expected)
+
+}
+```
+
+```{r}
+contigsCombined <- data.frame()
+
+for( elem in c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy")){
+    dfTemp <- df[df$sampleAttributes == elem,]
+
+
+    for(sName in dfTemp$sampleNames){
+      print(paste0(elem , " ", sName))
+      allContigs <- read.table(paste0(dataDir,"/VDJ_Files/",sName,
+                                      "/ChangeO/HeavyAA_Model/filtered_single_light_heavy_paired_clone-pass.tab"),
+                             sep="\t", header=TRUE, stringsAsFactors = F)
+      allContigs <- allContigs[allContigs$C_CALL != "",]
+      allContigs$C_CALL_General <- sapply(allContigs$C_CALL, function(x){substr(x,1,4)})
+      allContigs$C_CALL_LIGHT_General <- sapply(allContigs$C_CALL_LIGHT, function(x){substr(x,1,3)})
+      allContigs <- allContigs[allContigs$C_CALL_LIGHT_General %in% c("IGL", "IGK"),]
+      allContigs <- allContigs[allContigs$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+      allContigs$Seq_Imgt_len <- sapply(allContigs$SEQUENCE_IMGT, nchar)
+      allContigs$Germ_Imgt_len <- sapply(allContigs$GERMLINE_IMGT, nchar)
+      allContigs <- allContigs[allContigs$Seq_Imgt_len == allContigs$Germ_Imgt_len,]
+      contigsCombined <- rbind(contigsCombined, calculateSlectionPressure(allContigs, sampleType=elem))
+
+    }
+}
+saveRDS(contigsCombined, paste0(dataDir,"/RDSFiles/mutationalPressure2.rds"))
+
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+  #contigsCombined <- readRDS(paste0(dataDir,"/RDSFiles/mutationalPressure2.rds"))
+# Calculate selection scores using the output from expectedMutations
+  #baseline <- calcBaseline(contigsCombined, testStatistic="focused", 
+  #                       regionDefinition=IMGT_V_BY_REGIONS, nproc=1)
+  #saveRDS(baseline, paste0(dataDir,"/RDSFiles/baselineMutationalPressure2.rds"))
+  
+  #baseline <- readRDS(paste0(dataDir,"/RDSFiles/baselineMutationalPressure.rds"))
+  #grouped <- groupBaseline(baseline, groupBy=c("sampleType","C_CALL_General"))
+  #saveRDS(grouped, paste0(dataDir,"/RDSFiles/groupedBaselineMutationalPressure2.rds"))
+  grouped <- readRDS(paste0(dataDir,"/RDSFiles/groupedBaselineMutationalPressure.rds"))
+  plotBaselineSummary(grouped, "sampleType","C_CALL_General")+theme_bw()+
+    scale_y_continuous(breaks = seq(-0.8,0.4,0.1), labels =seq(-0.8,0.4,0.1) )+
+    ylab("Selection score")+scale_color_discrete(name = "ISOTYPE")+
+     theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r}
+plotBaselineDensity(grouped, "sampleType", groupColumn="C_CALL_General",sigmaLimits=c(-1, 1))
+```
+

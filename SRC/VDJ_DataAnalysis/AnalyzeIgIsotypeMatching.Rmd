@@ -1,0 +1,42 @@
+---
+title: 'Create Ig Isotype Matching '
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=16}
+plotIgMatching <- function(inName, titleStr){
+    Clones <- read.table(inName,sep="\t", header=TRUE, stringsAsFactors = F)
+
+    tp <- unique(Clones[,c("C_CALL", "C_CALL_LIGHT", "CLONE")])
+    tp$C_CALL_LIGHT <- sapply(tp$C_CALL_LIGHT, function(x){substr(x,1,3)})
+    tp <- tp[tp$C_CALL_LIGHT !="" & tp$C_CALL != "",]
+    tp$CLONE <- NULL
+    dd <- as.data.frame(table(tp))
+    
+    print(ggplot(as.data.frame(dd),
+       aes(y = Freq, axis1 = C_CALL, axis2 = C_CALL_LIGHT)) +
+      geom_alluvium(aes(fill = C_CALL_LIGHT), width = 1/20) +
+      geom_stratum(width = 1/20, color = "grey") +
+      geom_text(stat = "stratum", label.strata = TRUE, size=4)+
+      #geom_label(stat = "stratum", label.strata = TRUE, label.size = 5) +
+      scale_fill_brewer(type = "qual", palette = "Dark2") + theme(legend.position = "None")+
+      ggtitle(titleStr))
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=16}
+for(sampleName in sampleNames){
+  print(sampleName)
+
+  plotIgMatching(inName=paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/HeavyAA_Model/filtered_single_light_heavy_paired_clone-pass.tab"),
+                 titleStr=paste0(sampleName))
+ 
+}
+
+```

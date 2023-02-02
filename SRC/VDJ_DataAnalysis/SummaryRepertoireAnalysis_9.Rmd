@@ -1,0 +1,93 @@
+---
+title: "Summarized Repertoire Analysis 9"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+library("VennDiagram")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  df=data.frame( sampleNames=samples$SampleNames,
+                 sampleAttributes=samples$SampleAttributesPrint,
+                 donorID=samples$DonorID,
+                 CanonicalSampleName = samples$CanonicalSampleName,
+                 stringsAsFactors = F)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+
+```
+
+```{r}
+plotCloneVennDiag <- function(donorID){
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",donorID,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  inClonesType <- unique(inClones[,c("CLONE", "clonalC_Call", "NumberOfClonalCells")])
+  
+  clonesTypeList = list(A1=c(), A2=c(),  G1=c(), G2=c(), G3_4=c())
+  
+  apply(inClonesType, 1, function(x){
+    cCalls <- strsplit(x["clonalC_Call"], "_")[[1]]
+    
+    
+    for(elem in cCalls){
+     
+      if(elem == "IGHA1"){
+        clonesTypeList[["A1"]] <<- c(clonesTypeList[["A1"]], x[["CLONE"]])
+      }
+      
+      if(elem == "IGHA2"){
+        
+        clonesTypeList[["A2"]] <<- c(clonesTypeList[["A2"]], x[["CLONE"]])
+      }
+      
+      # if(elem == "IGHM"){
+      #   clonesTypeList[["M"]] <<- c(clonesTypeList[["M"]], x[["CLONE"]])
+      # }
+      
+      if(elem == "IGHG1"){
+        clonesTypeList[["G1"]] <<- c(clonesTypeList[["G1"]], x[["CLONE"]])
+      }
+      
+      if(elem == "IGHG2"){
+        clonesTypeList[["G2"]] <<- c(clonesTypeList[["G2"]], x[["CLONE"]])
+      }
+      
+     
+       if(elem %in% c("IGHG3", "IGHG4")){
+         clonesTypeList[["G3_4"]] <<- c(clonesTypeList[["G3_4"]], x[["CLONE"]])
+       }
+  }
+    
+
+  })
+  
+  VennDiagram::venn.diagram(
+            x = clonesTypeList,
+            height = 3600,
+            width = 3600,
+            filename = paste0(dataDir,"/JohannesSlides/",donorID,"_ClonalVenn_2.jpg"),
+            category.names = c("IGHA1" , "IGHA2 " ,  "IGHG1", "IGHG2", "IGHG3_4"),
+            fill=c("coral1","red", "lightskyblue1", "purple", "olivedrab3"),
+            main=donorID,
+            output=TRUE)
+  
+}
+```
+
+```{r}
+
+for(donorID in c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20")){
+  plotCloneVennDiag(donorID)
+}
+```
+

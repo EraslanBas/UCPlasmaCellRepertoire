@@ -1,0 +1,89 @@
+---
+title: "Summarized Repertoire Analysis 6"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+samplesTmp <- unique(samples[,c("CanonicalSampleName","DonorID")])
+rownames(samplesTmp) <- samplesTmp$CanonicalSampleName
+
+allContigsCombined <- readRDS(paste0(dataDir,"/RDSFiles/allContigsCombined.rds"))
+rownames(samples) <- samples$SampleNames
+allContigsCombined$donorID <- samplesTmp[allContigsCombined$sampleName, "DonorID"]
+allContigsCombined <- as.data.table(allContigsCombined)
+allContigsCombined$sampleNameClone <- paste0(allContigsCombined$sampleName,"_",allContigsCombined$CLONE)
+
+allContigsCombined[,cellsPerClone := length(unique(CELL)),by=sampleNameClone]
+
+allCC <- unique(allContigsCombined[,c("CLONE","sampleName","sampleType", "cellsPerClone", "donorID")])
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+
+allCC$sampleType <- factor(allCC$sampleType, levels = c("Healthy", "UC Non-Inflamed", "UC Less Inflamed", "UC Inflamed"))
+
+cList = list(c("UC Inflamed", "UC Less Inflamed"), c("UC Inflamed", "UC Non-Inflamed"), c("UC Non-Inflamed", "Healthy"),
+              c("UC Inflamed", "Healthy"))
+
+
+allCCX <- allCC[allCC$cellsPerClone > 2,]
+k <- ggplot(allCCX, aes(x=sampleType, y=cellsPerClone)) + 
+    geom_violin(trim=FALSE)+
+    theme_bw()+
+    geom_jitter(shape=16, position=position_jitter(0.3), alpha=0.5)+
+   ylab("Number of cells per clone")+
+     scale_y_continuous(trans='log2', breaks = c(1,2,4,8,16,32,64,128), labels = c(1,2,4,8,16,32,64,128))+xlab("")+
+  stat_summary(fun.data="mean_sdl", 
+                 geom="crossbar", width=0.2, color="red")+
+  stat_compare_means(method="wilcox.test",
+                                comparisons = cList,paired=F,
+                                color="red",
+                                aes(label = ..p.signif..),  method.args = list(alternative = "greater"))
+
+ pdf(file = paste0(dataDir,"/SummaryFigures/NumberOfCellsPerClone.pdf"), width = 10, height = 8)
+  plot(k)
+  dev.off()
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=5, fig.height=4}
+plist <- list()
+
+for(elem in c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18", "UC20")){
+  allCCUCTemp <- allCC[allCC$donorID == elem,]
+  k <- ggplot(allCCUCTemp, aes(x=sampleType, y=cellsPerClone)) + 
+    geom_violin(trim=FALSE)+
+    theme_bw()+
+    geom_jitter(shape=16, position=position_jitter(0.3), alpha=0.3)+
+   ylab("Number of cells per clone")+
+     scale_y_continuous(trans='log2', breaks = c(1,2,4,8,16,32,64,128, 256, 512), 
+                                      labels = c(1,2,4,8,16,32,64,128,256,512))+xlab("")+
+  stat_summary(fun.data="mean_sdl", 
+                 geom="crossbar", width=0.2, color="red")+
+  stat_compare_means(method="wilcox.test",
+                                comparisons = list(c("UC Inflamed", "UC Less Inflamed")),paired=F,
+                                color="red",
+                                aes(label = ..p.signif..),  method.args = list(alternative = "greater"))+
+    ggtitle(elem)
+  
+  plist <- lappend(plist, k)
+}
+
+pdf(file = paste0(dataDir,"/JohannesSlides/Figure5_2.pdf"), width = 5, height = 15)
+plot_grid(plotlist = plist, ncol = 4 )
+dev.off()
+
+```
+

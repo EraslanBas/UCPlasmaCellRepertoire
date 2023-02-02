@@ -1,0 +1,69 @@
+---
+title: "Inspect Batch Effects"
+output: html_notebook
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+samps <-  readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+IG_genes <- read.csv(paste0(dataDir,"IG_Genes.txt"), sep = '\t', stringsAsFactors = F)
+
+```
+
+
+
+```{r}
+df=data.frame( sampleNames=sampleNames,
+                 sampleAttributes=factor(sampleAttributesPrint, levels = c("UC Inflamed", "UC Non-Inflamed", "PSC1 Non-Inflamed", "Healthy")),
+                 donorID=as.factor(donorID),
+                 index=1:length(sampleNames),
+               batch=batch)
+```
+
+Filter IgGenes from expression matrix
+```{r}
+# for(i in 1:length(samps)){
+#   serObj <- samps[[i]]
+#   serObj <- serObj[rownames(serObj[["RNA"]]) %ni% c(as.character(IG_genes$Gene.name),
+#                                                     "CH17-262H11.1", "AC233755.1","CH17-212P11.4", "AC233755.2", "CH17-224D4.1"),]
+#   samps[[i]] <- serObj
+# }
+```
+
+```{r}
+# immune.anchors <- FindIntegrationAnchors(object.list = samps)
+# immune.combined <- IntegrateData(anchorset = immune.anchors, dims = 1:30)
+# saveRDS(immune.combined, paste0(dataDir,"/RDSFiles/immuneCombined.rds"))
+```
+
+```{r}
+immune.combined <- readRDS(paste0(dataDir,"/RDSFiles/immuneCombined.rds"))
+DefaultAssay(immune.combined) <- "integrated"
+
+immune.combinedSca <- ScaleData(immune.combined, verbose = FALSE, do.scale = F, vars.to.regress="batch")
+immune.combinedSca <- RunPCA(immune.combinedSca, npcs = 50, verbose = FALSE)
+immune.combinedSca <- RunTSNE(immune.combinedSca, reduction = "pca", dims = 1:50)
+immune.combinedSca <- FindNeighbors(immune.combinedSca, reduction = "pca", dims = 1:50)
+immune.combinedSca <- FindClusters(immune.combinedSca, resolution = 0.1)
+
+saveRDS(immune.combinedSca, paste0(dataDir,"/RDSFiles/immuneCombinedScaBatchCor.rds"))
+```
+
+```{r, fig.height=10, fig.width=10}
+print(DimPlot(immune.combinedSca, reduction = "tsne", split.by="orig.ident"))
+```
+
+
+```{r, fig.height=8, fig.width=15}
+obj.markers <- FindAllMarkers(immune.combinedSca, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.5)
+
+top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+print(top10)
+print(DoHeatmap(immune.combinedSca, features = top10$gene) + NoLegend()+theme(axis.text.y = element_text(size = 8)))
+```
+
+```{r}
+Idents(immune.combinedSca) <- "batch"
+print(DimPlot(immune.combinedSca, reduction = "tsne", pt.size = 0.005)+scale_color_brewer(palette = "Set1"))
+
+```

@@ -1,0 +1,48 @@
+---
+title: "Combine technical replicates"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+
+```{r}
+  samples <- samples[samples$Use==1,]
+
+  #for(elem in unique((samples$Replicates))){
+   for(elem in c(61, 60)){
+    
+    sampsTemp <- samples[samples$Replicates == elem ,]
+    
+    fTemp = data.frame()
+    
+    canonicalSampleName = sampsTemp[1,"CanonicalSampleName"]
+    
+    for(i in 1:length(sampsTemp$SampleNames)){
+      k <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/VDJ_Files/",sampsTemp$SampleNames[i],
+                   "/ChangeO/filtered_single_light_heavy_paired.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+      
+      k$sampleName <- sampsTemp$SampleNames[i]
+      k$CELL <- paste0(k$CELL,"_",sampsTemp$SampleNames[i])
+      k$SEQUENCE_ID <- paste0(k$SEQUENCE_ID,"_",sampsTemp$SampleNames[i])
+      k$sampleType <- sampsTemp$SampleAttributes[i]
+      fTemp <- rbind(fTemp, k)
+    }
+    
+    mkdir(paste0(dataDir,"/MergedVDJReplicates/",canonicalSampleName))
+    write.table(fTemp, 
+                file =paste0(dataDir,"/MergedVDJReplicates/",canonicalSampleName,
+                             "/filtered_single_light_heavy_paired.tab"),
+                sep="\t", row.names = FALSE, quote = F)
+  }
+ 
+```

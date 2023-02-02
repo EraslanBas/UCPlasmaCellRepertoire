@@ -1,0 +1,237 @@
+---
+title: "Analyze ChangeO Clones"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+library(seqinr)  
+library(msa)
+library(ape)
+library(alakazam)
+library(shazam)
+library(dplyr)
+library(ggplot2)
+library("xlsx")
+
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=32}
+plotClonalDistribution <- function(inClones, titleStr){
+  
+  inClones[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+  inClones <- inClones[order(-NumberOfClonalCells),]
+  datT <- unique(inClones[,c("CLONE","NumberOfClonalCells")])
+
+  for(j in 1:max(datT$NumberOfClonalCells)){
+    if(j==1){
+      datT[datT$NumberOfClonalCells==j,"raw_clonotype_id"] <- paste0(j, " cell")
+    }else{
+      datT[datT$NumberOfClonalCells==j,"raw_clonotype_id"] <- paste0(j, " cells")
+    }
+  }   
+  datT[,numberOfClones := .(.N),by=.(raw_clonotype_id)]
+  datT[,totalNumberOfCells := sum(NumberOfClonalCells),by=.(raw_clonotype_id)]
+  datT$NumberOfClonalCells <- NULL
+  datT$CLONE <- NULL
+  
+  datT <- unique(datT)
+  
+  datT$fraction = as.numeric(format(round(datT$totalNumberOfCells / sum(datT$totalNumberOfCells), 2), nsmall = 2))
+  datT = datT[order(datT$totalNumberOfCells), ]
+  datT$ymax = cumsum(datT$fraction)
+  datT$ymin = c(0, head(datT$ymax, n=-1))
+  datT <- datT[datT$fraction > 0.001,]
+  datT$raw_clonotype_id <- factor(datT$raw_clonotype_id , levels = rev(as.character(datT$raw_clonotype_id) ))
+   # Make the plot
+  p = ggplot(datT, aes(fill=raw_clonotype_id, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect() +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) + theme_void()+
+     theme(axis.ticks=element_blank(), legend.title = element_blank()) +
+     annotate("text", x = 0, y = 0, label = paste0(sum(datT$totalNumberOfCells)), size=8) +
+     scale_fill_manual(values = colorRampPalette(brewer.pal(200, "Dark2"))(nrow(datT)))+
+     labs(title="")+geom_text(aes(label=numberOfClones,x=4,y=(ymin+ymax)/2),inherit.aes = TRUE, show.legend = FALSE)+ggtitle(titleStr)
+  return(p)
+  
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE,  fig.height=8, fig.width=32}
+plotClonePies <- function(Clones, titleStr){
+  p1 <- plotClonalDistribution(Clones, titleStr)
+
+  Clones$C_CALL_sum <- sapply(Clones$C_CALL, function(x){substr(x,1,4)})
+  ClonesIgG <- Clones[Clones$C_CALL_sum == "IGHG",]
+  ClonesIgA <- Clones[Clones$C_CALL_sum == "IGHA",]
+  ClonesIgM <- Clones[Clones$C_CALL_sum == "IGHM",]
+  
+  p2 <-plotClonalDistribution(ClonesIgG, paste0(titleStr, " IgG Clones"))
+  p3 <- plotClonalDistribution(ClonesIgA, paste0(titleStr, " IgA Clones"))
+  p4 <- plotClonalDistribution(ClonesIgM, paste0(titleStr, " IgM Clones"))
+  
+  print(plot_grid(plotlist = list(p1, p2,p3,p4),nrow = 1))
+  
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE,  fig.height=8, fig.width=32}
+sortCloneFiles <- function(inName, outName, titleStr, splitFiles=F, outNameInf=NULL, outNameLessInf=NULL, donorDir){
+  Clones <- read.table(inName,sep="\t", header=TRUE, stringsAsFactors = F)
+  Clones$SEQUENCE_ID <- Clones$CELL
+  #write.table(Clones,file = inName, sep="\t", row.names = FALSE)
+  
+  Clones <- as.data.table(Clones)
+  
+  Clones[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+  Clones <- Clones[order(-NumberOfClonalCells),]
+  
+  Clones <- Clones[, CellsOfTheClone := do.call(paste, as.list(CELL)), by = .(CLONE)]
+  Clones$CellsOfTheClone <- sapply(Clones$CellsOfTheClone, function(x){str_replace_all(x, pattern=" ", replacement=";")})
+  
+  print(titleStr)
+  #print(head(Clones[,c("CLONE","NumberOfClonalCells")]))
+  
+  Clones$CDR3_Heavy <- sapply(Clones$JUNCTION, function(x){return(paste(translate(s2c(x)),  collapse=""))})
+  Clones$CDR3_Light <- sapply(Clones$JUNCTION_LIGHT, function(x){return(paste(translate(s2c(x)),  collapse=""))})
+  
+  tpW <- Clones[,c("CLONE","CELL","C_CALL","V_CALL","J_CALL","JUNCTION","CDR3_Heavy","C_CALL_LIGHT","V_CALL_LIGHT","J_CALL_LIGHT",
+                   "JUNCTION_LIGHT","CDR3_Light","NumberOfClonalCells", "SEQUENCE_VDJ", "VDJ_SEQUENCE_LIGHT", "SAMPLENAME","SAMPLETYPE")]
+  colnames(tpW) <- c("Clone", "Cell", "Heavy_isotope", "V_heavy", "J_heavy", "CDR3_heavy_nt","CDR3_heavy_aa","Light_isotope",
+                     "V_light","J_light","CDR3_light_nt","CDR3_light_aa","NumberOfClonalCells","VDJ_Sequence_Heavy", "VDJ_Sequence_Light", "SAMPLENAME","SAMPLETYPE")
+  tpW$Light_isotope <- sapply(tpW$Light_isotope, function(x){substr(x,1,3)})
+  tpW <- data.frame(lapply(tpW, function(x) {
+                  gsub(",", ";", x)
+              }))
+
+  tpW$sampleRegion <- samples[as.character(tpW$SAMPLENAME),"Position"]
+  tpW$sampleRegion <- as.character(tpW$sampleRegion)
+  #write.csv(x=tpW, file = outName,quote = F, row.names = F)
+  write.xlsx2(tpW, file=outName, sheetName = "Clones",
+              col.names = TRUE, row.names = FALSE, append = FALSE)
+
+  for(region in unique(tpW$sampleRegion)){
+    tpWTemp <- as.data.table(tpW[tpW$sampleRegion == region,])
+    tpWTemp[,NumberOfRegionalClonalCells := length(unique(Cell)),by=Clone]
+    tpWTemp <- tpWTemp[order(-NumberOfRegionalClonalCells),]
+
+    write.xlsx2(as.data.frame(tpWTemp), file=paste0(donorDir, region,"_colonRegion.xls"), sheetName = "Clones",
+              col.names = TRUE, row.names = FALSE, append = FALSE)
+  }
+
+  if(splitFiles){
+    # infCells <- as.data.table(tpW[tpW$SAMPLETYPE == "UC_INF",])
+    # infCells[,NumberOfInClonalCells := length(unique(Cell)),by=Clone]
+    # infCells <- infCells[order(-NumberOfInClonalCells),]
+    # 
+    # write.xlsx2(as.data.frame(infCells), file=outNameInf, sheetName = "Clones",
+    #           col.names = TRUE, row.names = FALSE, append = FALSE)
+    ClonesINF <- Clones[Clones$SAMPLETYPE == "UC_INF",]
+    ClonesINF[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+    ClonesINF <- ClonesINF[order(-NumberOfClonalCells),]
+  
+    ClonesINF <- ClonesINF[, CellsOfTheClone := do.call(paste, as.list(CELL)), by = .(CLONE)]
+    ClonesINF$CellsOfTheClone <- sapply(ClonesINF$CellsOfTheClone, function(x){str_replace_all(x, pattern=" ", replacement=";")})
+  
+  
+    plotClonePies(ClonesINF, paste0(titleStr, " UC_INF"))
+    
+    # lessInfCells <- as.data.table(tpW[tpW$SAMPLETYPE == "UC_LessINF",])
+    # lessInfCells[,NumberOfInClonalCells := length(unique(Cell)),by=Clone]
+    # lessInfCells <- lessInfCells[order(-NumberOfInClonalCells),]
+    # 
+    # write.xlsx2(as.data.frame(lessInfCells), file=outNameLessInf, sheetName = "Clones",
+    #           col.names = TRUE, row.names = FALSE, append = FALSE)
+    
+    ClonesLessINF <- Clones[Clones$SAMPLETYPE == "UC_LessINF",]
+    
+    if(nrow(ClonesLessINF) > 5){
+            ClonesLessINF[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+            ClonesLessINF <- ClonesLessINF[order(-NumberOfClonalCells),]
+          
+            ClonesLessINF <- ClonesLessINF[, CellsOfTheClone := do.call(paste, as.list(CELL)), by = .(CLONE)]
+            ClonesLessINF$CellsOfTheClone <- sapply(ClonesLessINF$CellsOfTheClone, function(x){str_replace_all(x, pattern=" ", replacement=";")})
+          
+            plotClonePies(ClonesLessINF, paste0(titleStr, " UC_LessINF"))
+            
+            Clones$C_CALL_General <- sapply(Clones$C_CALL, function(x){substr(x,1,4)})
+            Clones <- Clones[Clones$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+        
+            sample_curve <- alphaDiversity(Clones, group="SAMPLETYPE",
+                                        min_q=0, max_q=2, step_q=1,
+                                        ci=0.95, nboot=400, min_n=10, clone="CLONE")
+            sample_curve <- as.data.frame(sample_curve@diversity)
+            shannonVals <- as.data.frame(sample_curve[sample_curve$q ==1,])
+            
+            p1 <- ggplot(shannonVals, aes(x = SAMPLETYPE, y = d)) + 
+              geom_bar(stat = "identity") +
+              ylab("Shannon entropy")
+        
+            
+            Clones$sampleTypeCCallGen <- paste0(Clones$SAMPLETYPE, "_", Clones$C_CALL_General)
+            
+            sample_curveCCall <- alphaDiversity(Clones, group="sampleTypeCCallGen",
+                                        min_q=0, max_q=2, step_q=1,
+                                        ci=0.95, nboot=400, min_n=10, clone="CLONE")
+            sample_curveCCall <- as.data.frame(sample_curveCCall@diversity)
+            shannonValsCCall <- as.data.frame(sample_curveCCall[sample_curveCCall$q ==1,])
+            shannonValsCCall$isotype = sapply(shannonValsCCall$sampleTypeCCallGen,function(x){strsplit(x,"_IG")[[1]][2]})
+            
+            p2 <- ggplot(shannonValsCCall, aes(x = sampleTypeCCallGen, y = d, fill=isotype)) +
+              geom_bar(stat = "identity")+
+              ylab("Shannon entropy")+
+              theme(axis.text.x=element_text(angle = 90, vjust = 0.5))
+              
+           print(plot_grid(plotlist = list(p1, p2),nrow = 1))
+
+    }
+    
+  }else{
+    plotClonePies(Clones, titleStr)
+  }
+  
+  
+  
+ 
+}
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=10, fig.width=20}
+#for(donorName in c("UC3","UC10","UC15","UC16","UC17","UC18","UC20","UC22","UC4","UC9","UC14","UC19","UC23","Healthy1","Healthy2","Healthy3","Healthy4", "Healthy5", "Healthy6", "Healthy8", "Healthy9")){
+for(donorName in c("UC24", "UC25")){
+
+  print(donorName)
+  donorDir = paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",donorName,"/")
+  
+  if(unique(samples[samples$DonorID == donorName, "DonorAttribute"]) == "UC"){
+    sortCloneFiles(
+                 inName=paste0(donorDir,"/filtered_single_light_heavy_paired_clone-pass.tab"),
+                 outName=paste0(donorDir,donorName,"_clones_heavyAA.xls"),
+                 titleStr=donorName, splitFiles = T,
+                 outNameInf=paste0(donorDir,donorName,"_INF_clones_heavyAA.xls"),
+                 outNameLessInf=paste0(donorDir,donorName,"_LESSINF_clones_heavyAA.xls"),
+                 donorDir=donorDir)
+    
+  }else{
+    sortCloneFiles(inName=paste0(donorDir,"/filtered_single_light_heavy_paired_clone-pass.tab"),
+                 outName=paste0(donorDir,donorName,"_clones_heavyAA.xls"),
+                 titleStr=paste0(donorName), splitFiles = F, donorDir=donorDir)
+  }
+}
+
+```
+

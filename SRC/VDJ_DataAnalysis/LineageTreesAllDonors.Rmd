@@ -1,0 +1,58 @@
+---
+title: "Clonal lineage trees of all combined samples"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+inClones <-  read.table(file =paste0(dataDir,"/Subjects/allDonorsfiltered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=15}
+  par(mfrow=c(1,2))
+  inClones <- prepareClones(inClones)
+  s <- unique((inClones[,c("DONORID","CLONE")]))
+  cloneTab <- table(s$CLONE)
+  
+  jointClones <- names(which(cloneTab>1))
+  jointClones <- unique(inClones[inClones$CLONE %in% jointClones,"CLONE"])
+  
+  for(cloneID in jointClones){
+    sub_db <- subset(inClones, CLONE == cloneID)
+    if(nrow(sub_db) > 4){
+      cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F, mergeWithDonorID = T)
+      plotClone(cloneInfo, titleStr=paste0(" Clone ", cloneID))
+      plotCloneWithDonor(cloneInfo, titleStr=paste0(" Clone ", cloneID))
+    }
+  }
+```
+
+```{r}
+  onlyJointClones <- inClones[inClones$CLONE %in% jointClones,]
+  onlyJointClones$CDR3_Heavy <- sapply(onlyJointClones$JUNCTION, function(x){return(paste(translate(s2c(x)),  collapse=""))})
+  onlyJointClones$CDR3_Light <- sapply(onlyJointClones$JUNCTION_LIGHT, function(x){return(paste(translate(s2c(x)),  collapse=""))})
+  
+  tpW <- onlyJointClones[,c("DONORID","CLONE","CELL","C_CALL","V_CALL","J_CALL","JUNCTION","CDR3_Heavy","C_CALL_LIGHT","V_CALL_LIGHT","J_CALL_LIGHT",
+                   "JUNCTION_LIGHT","CDR3_Light","NumberOfClonalCells", "SEQUENCE_VDJ", "VDJ_SEQUENCE_LIGHT", "FUNCTIONAL", "IN_FRAME", "STOP", "MUTATED_INVARIANT", "GERMLINE_IMGT", "GERMLINE_IMGT_LIGHT")]
+  colnames(tpW) <- c("DONORID","Clone", "Cell", "Heavy_isotope", "V_heavy", "J_heavy", "CDR3_heavy_nt","CDR3_heavy_aa","Light_isotope",
+                     "V_light","J_light","CDR3_light_nt","CDR3_light_aa","NumberOfClonalCells","VDJ_Sequence_Heavy", "VDJ_Sequence_Light", "FUNCTIONAL", "IN_FRAME", "STOP", "MUTATED_INVARIANT", "GERMLINE_IMGT", "GERMLINE_IMGT_LIGHT")
+  tpW$Light_isotope <- sapply(tpW$Light_isotope, function(x){substr(x,1,3)})
+  tpW <- data.frame(lapply(tpW, function(x) {
+                  gsub(",", ";", x)
+              }))
+  write.xlsx2(tpW, file=paste0(dataDir,"/Subjects/JointClonesAcrossDonors.xls"), sheetName = "Clones",
+              col.names = TRUE, row.names = FALSE, append = FALSE)
+  
+```
+

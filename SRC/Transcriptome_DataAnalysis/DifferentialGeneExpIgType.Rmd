@@ -1,0 +1,153 @@
+---
+title: "Differential gene expression analysis between IgA and IgG B-cells"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+samps <-  readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+IG_genes <- read.csv(paste0(dataDir,"IG_Genes.txt"), sep = '\t', stringsAsFactors = F)
+
+IG_genes <- IG_genes[IG_genes$Gene.type %in% c("IG_V_gene", "IG_D_gene", "IG_C_gene", "IG_J_gene"),]
+IG_genes$GeneTypeDetail <- sapply(IG_genes$Gene.name, function(x){substr(x,start = 1,4)})
+
+hcGenes <- unique(IG_genes[IG_genes$Gene.type=="IG_C_gene","GeneTypeDetail"])
+hcGenes <- hcGenes[hcGenes %ni% c("IGKC", "IGLC")]
+hcGenesNames <- IG_genes[IG_genes$GeneTypeDetail %in% hcGenes, c("Gene.name","GeneTypeDetail")]
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+dfAll <- data.frame(cellNo=numeric(), IgType=character(), sampleName=character())
+IG_genesAll <- read.csv(paste0(dataDir,"IG_Genes.txt"), sep = '\t', stringsAsFactors = F)
+difExpGenes <- list()
+cSampNames <- c()
+# for(serObj in samps){
+#   print(serObj@project.name)
+#   x <- as.matrix(GetAssayData(serObj, slot = "data"))
+#   availableGIndex <- which(hcGenesNames$Gene.name %in% rownames(x))
+#   availableGenes <- hcGenesNames[availableGIndex,]
+#   
+#   totalUMIcounts <- list()
+#   elemNames <- c()
+#   for(elem in hcGenes){
+#     relGeneNames <- availableGenes[availableGenes$GeneTypeDetail==elem,"Gene.name"]
+#    
+#     if(length(relGeneNames)>0){
+#       totalUMIcounts <- lappend(totalUMIcounts, colSums(x[relGeneNames,]))
+#       elemNames <- c(elemNames, elem)
+#     }
+#   }
+#   names(totalUMIcounts) <-elemNames
+#   totalUMIcounts <- do.call(rbind, totalUMIcounts)
+#   allTSums <- colSums(totalUMIcounts)
+#   
+#   cType <- apply(totalUMIcounts,2,function(x){which.max(x)})
+#   validRows <- sort(unique(cType))
+#   cType <- factor(cType, labels = rownames(totalUMIcounts)[validRows])
+#   
+#   IgACells <- names(cType[cType=="IGHA"])
+#   IgGCells <- names(cType[cType=="IGHG"])
+#   
+#   serObj <- serObj[rownames(serObj[["RNA"]]) %ni% IG_genesAll$Gene.name,]
+#   IgACellsObj <- subset(x=serObj, cells = IgACells)
+#   IgACellsObj$IgType="IgA"
+# 
+#   IgGCellsObj <- subset(x=serObj, cells = IgGCells)
+#   IgGCellsObj$IgType="IgG"
+#   
+#   IgACellsObj <- FindVariableFeatures(IgACellsObj, selection.method = "vst", nfeatures = 2000)
+#   IgGCellsObj <- FindVariableFeatures(IgGCellsObj, selection.method = "vst", nfeatures = 2000)
+# 
+#   if(ncol(IgACellsObj@assays$RNA) > 30 & ncol(IgGCellsObj@assays$RNA) > 30){
+#      immune.anchors <- FindIntegrationAnchors(object.list = list(IgACellsObj, IgGCellsObj), k.filter=30 )
+#      immune.combined <- IntegrateData(anchorset = immune.anchors, dims = 1:50)
+#  
+#     immune.combined <- ScaleData(immune.combined, verbose = FALSE)
+#     immune.combined <- RunPCA(immune.combined, npcs = 50, verbose = FALSE)
+#     Idents(immune.combined) <- "IgType"
+#   
+#     uc.response <- FindMarkers(immune.combined, ident.1 = "IgA", ident.2 = "IgG", verbose = FALSE)
+#     print(head(uc.response, n=20))
+#     
+#     print(DotPlot(immune.combined, features = rownames(head(uc.response, n=20)), cols = c("blue", "red"), dot.scale = 8, 
+#       split.by = "IgType")+ RotatedAxis()+ggtitle(serObj@project.name))
+#     
+#   
+#     difExpGenes <- lappend(difExpGenes, uc.response)
+#     cSampNames <- c(cSampNames, serObj@project.name)
+#   }
+#  
+# }
+# 
+# names(difExpGenes) <- cSampNames
+# saveRDS(difExpGenes, paste0(dataDir, "/RDSFiles/difExpGenes.rds"))
+```
+
+
+```{r fig.height=8, fig.width=4}
+ difExpGenes <- readRDS(paste0(dataDir, "/RDSFiles/difExpGenes.rds"))
+
+
+difExpGenesNames <- lapply(difExpGenes, function(x){return(rownames(x[x$p_val_adj<0.05,]))})
+allGeneNames <- table(unlist(difExpGenesNames))
+allGeneNames <- allGeneNames[allGeneNames>2]
+
+
+dfM <- matrix(0, nrow=length(allGeneNames),
+              ncol=length(names(difExpGenes)))
+rownames(dfM) <- names(allGeneNames)
+colnames(dfM) <- names(difExpGenes)
+
+for(i in names(allGeneNames)){
+  for(j in names(difExpGenesNames)){
+    if(i %in% difExpGenesNames[[j]]){
+       dfM[i,j] <- difExpGenes[[j]][i,"avg_logFC"]
+    }
+  }
+}
+
+
+
+dfNames=data.frame(sampleNames=sampleNames,
+              sampleAttributes=sampleAttributesPrint,
+                 donorID=as.factor(donorID), stringsAsFactors = F)
+
+dfNames <- dfNames[order(sampleAttributes),]
+dfNames$index <- c(1:4,
+                   1:5,
+                   1:6,
+                   1:9)
+
+rownames(dfNames) <-dfNames$sampleNames
+#colnames(dfM) <- paste0(dfNames[colnames(dfM),"sampleAttributes"], "_",dfNames[colnames(dfM),"index"])
+#dfM<- dfM[, order(colnames(dfM))]
+
+# i=1
+# for(elem in unique(sampleAttributesPrint)){
+#   hCols <- grep(elem, colnames(dfM))
+#   for(h in hCols){
+#     dfM[dfM[,h] == 1, h] <- i
+#   }
+#   i <- i+1
+# }
+# 
+# 
+dfM[dfM>1] <- 1
+dfM[dfM < -1] <- -1
+
+maxX <- apply(dfM,1, function(x){max(abs(x))})
+dfMTemp <- dfM[maxX>0.6,]
+ pheatmap((dfMTemp), treeheight_row = 0, treeheight_col = 0, cluster_col = F, legend = T, fontsize_row = 8, fontsize_col = 7)
+ 
+k <- getDAVIDGO(foregroundGenes = rownames(dfM),
+              backgroundGenes = rownames(samps[[6]]@assays$RNA),
+             fileNamePrefix = "IgGGenes")
+```
+

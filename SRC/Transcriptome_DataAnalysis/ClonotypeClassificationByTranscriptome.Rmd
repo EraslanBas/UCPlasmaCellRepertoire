@@ -1,0 +1,142 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("cowplot")
+library("glmnet")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r}
+serObj <- readRDS(paste0(dataDir, "/RDSFiles/allSamplesCombined_2.rds"))
+# serObj <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 5000)
+# selGenes <- VariableFeatures(serObj)
+# serObj <- subset(serObj, features=selGenes)
+vdjContigs <- readRDS(paste0(dataDir, "/RDSFiles/allContigsCombined.rds"))
+rownames(samples) <- samples$SampleNames
+```
+
+```{r}
+vdjContigs$CELL <- sapply(vdjContigs$CELL, function(x){
+                                    k = strsplit(x,"-1_")
+                                    cellBarcode = k[[1]][1]
+                                    sIdentifier = samples[k[[1]][2], "SampleIdentifier"]
+                                    return(paste0(cellBarcode, "_", sIdentifier))})
+
+vdjContigs <- vdjContigs[vdjContigs$CELL %in% colnames(serObj@assays$RNA),]
+serObj <- subset(serObj, cells=vdjContigs$CELL)
+vdjContigs <- vdjContigs[vdjContigs$CELL %in% colnames(serObj@assays$RNA),]
+
+rownames(vdjContigs) <- vdjContigs$CELL
+vdjContigs <- vdjContigs[colnames(serObj@assays$RNA),]
+
+```
+
+
+```{r fig.width=15, fig.height=10}
+serObj$cloneSize = vdjContigs$NumberOfClonalCells
+serObj$IgType <- vdjContigs$C_CALL_General
+
+Idents(serObj) <- serObj$IgType
+print(DimPlot(serObj, reduction = "umap", pt.size = 0.001, label = F, cols = c("red", "lightblue", "darkgreen", "purple")))
+
+```
+
+
+
+
+```{r}
+X = t(GetAssayData(serObj, assay = "RNA"))
+
+X_zscore =scale(as.matrix(X), center = T, scale = T)
+```
+
+```{r}
+fit = glmnet(X_zscore, serObj$cloneSize, standardize = FALSE)
+```
+
+```{r}
+plot(fit)
+print(fit)
+```
+
+```{r}
+cvfit <- cv.glmnet(X_zscore, serObj$cloneSize, standardize = FALSE, family= "poisson")
+
+saveRDS(cvfit, paste0(dataDir, "/RDSFiles/cvfit.rds"))
+```
+
+
+```{r}
+plot(cvfit)
+signGenes <- data.frame(coef(cvfit, s = "lambda.1se"))
+```
+
+```{r}
+myCloneSizes = serObj$cloneSize
+
+myCloneSizes[myCloneSizes < 10] = 0
+
+myCloneSizes[myCloneSizes >= 10] = 1
+
+myCloneSizes <- as.factor(myCloneSizes)
+
+cvfitClass <- cv.glmnet(X_zscore, myCloneSizes, standardize = FALSE, family= "binomial", type.measure = "class")
+saveRDS(cvfitClass, paste0(dataDir, "/RDSFiles/cvfitClass.rds"))
+
+plot(cvfitClass)
+
+signGenes <- data.frame(coef(cvfitClass, s = "lambda.1se"))
+signGenes$geneName = rownames(signGenes)
+signGenes <- signGenes[signGenes$X1 != 0,]
+signGenes <- signGenes[signGenes$geneName != "(Intercept)",]
+
+impGenes <- signGenes[abs(signGenes$X1) > 0.02,]
+impGenes <- impGenes[order(impGenes$X1),]
+```
+
+```{r}
+serObj$isClonal = "notClonal"
+serObj$isClonal[serObj$cloneSize > 9] = "Clonal"
+
+serObj$isClonalStim <- paste0(serObj$isClonal, "_", serObj$stim)
+```
+
+```{r fig.width=13, fig.height=4}
+Idents(serObj) <- serObj$isClonalStim
+
+serObjUC <- subset(serObj, cells=names(serObj$stim[serObj$stim == "UC_INF"]))
+
+obj.markers <- FindAllMarkers(serObjUC)
+obj.markers <- obj.markers[obj.markers$p_val_adj < 0.1,]
+top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 98, wt = avg_logFC)
+
+ obj.markers <-  obj.markers[order( obj.markers$cluster, obj.markers$avg_log2FC),]
+  
+DotPlot(serObjUC, assay="RNA", features = unique(obj.markers$gene), cols=c("lightgrey","red"),
+               dot.scale = 4,  col.min = 0, col.max = 4, dot.min=0.2, scale = T) + 
+               RotatedAxis()+ theme(axis.text.x =element_text(size=9), legend.position = "bottom")+ xlab("")+
+          ylab("Clusters")+ggtitle("Marker genes per cluster")
+ 
+```
+
+```{r}
+
+X_UC = t(GetAssayData(serObjUC, assay = "RNA"))
+#X_zscore_UC =scale(as.matrix(X_UC), center = T, scale = T)
+
+
+myCloneSizes_UC = serObjUC$cloneSize
+myCloneSizes_UC[myCloneSizes_UC < 10] = 0
+myCloneSizes_UC[myCloneSizes_UC >= 10] = 1
+myCloneSizes_UC <- as.factor(myCloneSizes_UC)
+
+cvfitClass_UC <- cv.glmnet(as.matrix(X_UC), myCloneSizes_UC, standardize = FALSE, family= "binomial", type.measure = "class")
+saveRDS(cvfitClass, paste0(dataDir, "/RDSFiles/cvfitClass.rds"))
+
+```
+

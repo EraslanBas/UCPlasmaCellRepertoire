@@ -1,0 +1,432 @@
+---
+title: "Summarized B-Cell Repertoire Analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  df=data.frame( sampleNames=samples$SampleNames,
+                 sampleAttributes=samples$SampleAttributesPrint,
+                 donorID=samples$DonorID,
+                 CanonicalSampleName = samples$CanonicalSampleName,
+                 stringsAsFactors = F)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+getConstantRegion <- function(contigs, sampleType, SampleName){
+  
+   df <- as.data.frame(table(contigs[,c("C_CALL")]))
+   df$genIgType <- sapply(df$Var1, function(x){substr(x,1,4)})
+   
+   
+   df$FreqPerc <- df$Freq / sum(df$Freq)
+   df$Var1 <- sapply(df$Var1, function(x){substr(x,4,5)})
+   df$FreqPerc <- 100*df$FreqPerc
+   df$sampleType <- sampleType
+   df$SampleName <- SampleName
+   return(df)
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+getHeavyLightMatching <- function(contigs, SampleName){
+    tp <- unique(contigs[,c("C_CALL", "C_CALL_LIGHT","CELL")])
+    tp$C_CALL_LIGHT <- sapply(tp$C_CALL_LIGHT, function(x){substr(x,1,3)})
+    tp <- tp[tp$C_CALL_LIGHT !="" & tp$C_CALL != "",]
+    tp$CELL <- NULL
+    dd <- as.data.table(table(tp))
+    colnames(dd) <- c("C_CALL", "C_CALL_LIGHT", "Freq")
+    dd$FreqPerc <- dd$Freq / sum(dd$Freq)
+    dd[,FreqPercByLightChain := Freq/sum(Freq),by=C_CALL]
+    dd <- as.data.frame(dd)
+    dd$C_CALL <- sapply(dd$C_CALL, function(x){substr(x,4,5)})
+    dd$FreqPerc <- 100*dd$FreqPerc
+    dd$FreqPercByLightChain <- 100*dd$FreqPercByLightChain
+    dd$SampleName <- SampleName
+    return(dd)
+}
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+getIgRepertoire <- function(contigs, heavyOrLight="heavy", lambdaOrKappa="NULL", sampleType, SampleName){
+  
+  if(heavyOrLight == "heavy"){
+    tp <- contigs[,c("V_CALL", "J_CALL", "C_CALL_General","CLONE")]
+    
+    
+  }else if(heavyOrLight == "light"){
+    tp <- contigs[,c("V_CALL_LIGHT", "J_CALL_LIGHT", "C_CALL_General","C_CALL_LIGHT_General","CLONE")]
+   
+    if(lambdaOrKappa == "lambda"){
+      tp <- tp[tp$C_CALL_LIGHT_General=="IGL",]
+    }else if(lambdaOrKappa == "kappa"){
+      tp <- tp[tp$C_CALL_LIGHT_General=="IGK",]
+    }
+    tp$C_CALL_LIGHT_General <- NULL
+    colnames(tp) <- c("V_CALL", "J_CALL", "C_CALL_General","CLONE")
+  }
+  
+  
+    tp$V_CALL <- sapply(tp$V_CALL, function(x){substr(x,4,5)})
+    tp$J_CALL <- sapply(tp$J_CALL, function(x){substr(x,4,5)})
+    
+    vDF <- data.frame(table(tp[,c("V_CALL","C_CALL_General")]))
+    jDF <- data.frame(table(tp[,c("J_CALL","C_CALL_General")]))
+    
+    vT <- as.data.table(vDF)[,sum(Freq),by=C_CALL_General]
+    vDF <- merge(vDF, vT, by="C_CALL_General")
+
+    jT <- as.data.table(jDF)[,sum(Freq),by=C_CALL_General]
+    jDF <- merge(jDF, jT, by="C_CALL_General")
+
+    vDF <- as.data.table(vDF)
+    jDF <- as.data.table(jDF)
+    
+    vDF[,FreqPerc:=(Freq / sum(Freq))*100,by=C_CALL_General]
+    jDF[,FreqPerc:=(Freq / sum(Freq))*100,by=C_CALL_General]
+    
+    #vDF$Freq <- (vDF$Freq / sum(vDF$Freq))*100
+ 
+    #jDF$Freq <- (jDF$Freq / sum(jDF$Freq))*100
+ 
+    vDF$sampleType = sampleType
+    jDF$sampleType = sampleType
+    
+    vDF$SampleName = SampleName
+    jDF$SampleName = SampleName
+    return(list(vDF=vDF, jDF=jDF))
+}
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+plotGeneUsageBoxplot <- function(inDF,vOrJ, ylabStr){
+  
+  inDF$sampleType <- factor(inDF$sampleType, levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+  
+  if(vOrJ == "V"){
+    inDF$V_CALL <- factor(inDF$V_CALL, levels = paste0("V",1:9))
+    p <- ggplot(inDF) + 
+             geom_boxplot(aes(x=V_CALL, y=FreqPerc, fill=sampleType), outlier.size = -1, width=5/length(unique(inDF$V_CALL)))+
+             facet_wrap(~C_CALL_General,nrow = 1)
+  }else if(vOrJ == "J"){
+     inDF$J_CALL <- factor(inDF$J_CALL, levels = paste0("J",1:9))
+     p <- ggplot(inDF) + 
+             geom_boxplot(aes(x=J_CALL, y=FreqPerc, fill=sampleType), outlier.size = -1, width=5/length(unique(inDF$J_CALL)))+
+             facet_wrap(~C_CALL_General, nrow = 1)
+  }
+  
+  p <- p+ylab(ylabStr)+ylim(c(0,60))+ 
+        xlab("")+theme_bw()+
+        theme(axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15))
+  return(p)
+    
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+plotGeneUsageBoxplot2 <- function(inDF,vOrJ, ylabStr){
+  inDF <- data.frame(inDF)
+  inDF$sampleType <- factor(inDF$sampleType,
+                            levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+  
+  if(vOrJ == "V"){
+    inDF$V_CALL <- factor(inDF$V_CALL, levels = paste0("V",1:9))
+    p <- ggplot(inDF,aes(x=sampleType, y=FreqPerc, fill=sampleType)) + 
+             geom_boxplot()+
+             facet_grid(V_CALL~C_CALL_General)
+    
+  }else if(vOrJ == "J"){
+     inDF$J_CALL <- factor(inDF$J_CALL, levels = paste0("J",1:9))
+     p <- ggplot(inDF, aes(x=sampleType, y=FreqPerc, fill=sampleType)) + 
+             geom_boxplot()+
+             facet_grid(J_CALL~C_CALL_General)
+  }
+  
+  cList = list(c("UC Inflamed", "UC Less Inflamed"), c("UC Inflamed", "UC Non-Inflamed"),
+              c("UC Inflamed", "Healthy"), c( "UC Non-Inflamed","Healthy"))
+   
+  p <- p+ylab(ylabStr)+ylim(c(0,90))+ 
+        xlab("")+theme_bw()+
+      stat_compare_means(method="t.test",paired = FALSE,
+                                comparisons = cList,
+                                color="red", 
+                                label.y = c(60,65,70,65), aes(label = ..p.signif..))+
+        theme(axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+  return(p)
+    
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+allContigs = combineAllClones()
+allContigs <- allContigs[allContigs$C_CALL != "IGHD",]
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+getCloneRepresentativeCells <- function(allContigsTemp){
+  allContigsTemp$donorClone <- paste0(allContigsTemp$donorID, "_", allContigsTemp$CLONE)
+
+  allContigsTemp <- split(allContigsTemp, f = allContigsTemp$donorClone)
+  
+  allContigsTemp <- lapply(allContigsTemp, function(x){
+      k <- rownames(unique(x[,c("SAMPLENAME","C_CALL_General","C_CALL_LIGHT_General")]))
+      return(x[k,])
+  })
+  
+  allContigsTemp <- do.call(rbind, allContigsTemp)
+  
+  return(allContigsTemp)
+}
+```
+
+```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  plotsMatched = list()
+
+  igHGeneUsg_V = data.frame(C_CALL_General=character(),
+                           V_CALL=character(),
+                           Freq=numeric(),
+                           V1=numeric(),
+                           FreqPerc=numeric(),
+                           sampleType=character(),
+                           SampleName=character())
+  igHGeneUsg_J = data.frame(C_CALL_General=character(),
+                           J_CALL=character(),
+                           Freq=numeric(),
+                           V1=numeric(),
+                           FreqPerc=numeric(),
+                           sampleType=character(),
+                           SampleName=character())
+    
+  igKGeneUsg_V = data.frame(C_CALL_General=character(),
+                           V_CALL=character(),
+                           Freq=numeric(),
+                           V1=numeric(),
+                           FreqPerc=numeric(),
+                           sampleType=character(),
+                           SampleName=character())
+  
+  igKGeneUsg_J = data.frame(C_CALL_General=character(),
+                           J_CALL=character(),
+                           Freq=numeric(),
+                           V1=numeric(),
+                           FreqPerc=numeric(),
+                           sampleType=character(),
+                           SampleName=character())
+  
+  igLGeneUsg_V = data.frame(C_CALL_General=character(),
+                           V_CALL=character(),
+                           Freq=numeric(),
+                           V1=numeric(),
+                           FreqPerc=numeric(),
+                           sampleType=character(),
+                           SampleName=character())
+  
+  igLGeneUsg_J = data.frame(C_CALL_General=character(),
+                           J_CALL=character(),
+                           Freq=numeric(),
+                           V1=numeric(),
+                           FreqPerc=numeric(),
+                           sampleType=character(),
+                           SampleName=character())
+  
+  dfAll = data.frame(  Var1=character(),
+                       Freq=numeric(),
+                       genIgType=character(),
+                       FreqPerc=numeric(),
+                       sampleType=character(),
+                       SampleName=character())
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+ plotsMatched <- list()
+  
+  for( elem in c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy")){
+    allContigsTemp <- allContigs[allContigs$SAMPLETYPEPRINT == elem,]
+    allContigsTemp <- getCloneRepresentativeCells(allContigsTemp)
+    
+    dfAllMatched = data.frame(C_CALL=character(), 
+                       C_CALL_LIGHT=character(),
+                       Freq=numeric(),
+                       FreqPerc=numeric(),
+                       FreqPercByLightChain=numeric(),
+                       SampleName=character())
+    
+    for(sName in unique(allContigsTemp$SAMPLENAME)){
+      allContigsSample <- allContigsTemp[allContigsTemp$SAMPLENAME == sName,]
+      
+
+      dfAll <- rbind(dfAll, getConstantRegion(contigs = allContigsSample, sampleType=elem, SampleName = sName))
+      dfAllMatched <- rbind(dfAllMatched, getHeavyLightMatching( allContigsSample, SampleName = sName))
+      
+      vjList1 <- getIgRepertoire(contigs = allContigsSample,
+                                 heavyOrLight="heavy",
+                                 lambdaOrKappa="NULL",
+                                 sampleType = elem,
+                                 sName)
+      igHGeneUsg_V <- rbind(igHGeneUsg_V, vjList1$vDF)
+      igHGeneUsg_J <- rbind(igHGeneUsg_J, vjList1$jDF)
+      
+      vjList2 <- getIgRepertoire(contigs = allContigsSample,
+                                 heavyOrLight="light",
+                                 lambdaOrKappa="kappa",
+                                 sampleType = elem,
+                                 sName)
+      igKGeneUsg_V <- rbind(igKGeneUsg_V, vjList2$vDF)
+      igKGeneUsg_J <- rbind(igKGeneUsg_J, vjList2$jDF)
+      
+      vjList3 <- getIgRepertoire(contigs = allContigsSample,
+                                 heavyOrLight="light",
+                                 lambdaOrKappa="lambda",
+                                 sampleType = elem,
+                                 sName)
+      igLGeneUsg_V <- rbind(igLGeneUsg_V, vjList3$vDF)
+      igLGeneUsg_J <- rbind(igLGeneUsg_J, vjList3$jDF)
+    }
+        
+  
+     
+    dfAllMatched <- as.data.table(dfAllMatched)
+    dfAllMatched$C_CALL_match <- paste0(dfAllMatched$C_CALL,"_",dfAllMatched$C_CALL_LIGHT)
+    dfAllMatched[,totalIg := sum(Freq),by=C_CALL_match]
+    dfAllMatched <- dfAllMatched[dfAllMatched$totalIg > 5,]
+    
+    p2 <- ggplot(dfAllMatched, aes(x=C_CALL_LIGHT, y=FreqPercByLightChain)) + 
+     geom_boxplot(aes(fill=C_CALL_LIGHT))+
+     #facet_wrap(~C_CALL, nrow = 1)+
+     theme(legend.position = "None", axis.text = element_text(size=10))+
+     ylab("")+
+     xlab("")+ 
+     stat_compare_means(method="wilcox.test",paired = FALSE,
+                                comparisons = list(c("IGK","IGL")),
+                                color="red", label.y = 103,
+                                aes(label = ..p.signif..))+
+     ggtitle(paste0( elem, " samples"))+ylim(c(0,110))
+    print(p2)
+    plotsMatched <- lappend(plotsMatched, p2)
+}
+plot_grid(plotlist = plotsMatched, ncol = 4, label_y = "Percentage in the sample (%)")
+
+#plot_grid(plotsMatched, row = 2)
+#p2
+```
+
+```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=3}
+
+    dfAll$sampleType <- factor(dfAll$sampleType, levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+
+    k <- ggplot(dfAll,aes(x=sampleType, y=FreqPerc,fill=sampleType)) + 
+     geom_boxplot(outlier.size = -1)+
+     facet_wrap(~Var1, nrow = 1)+
+     theme(axis.text = element_text(size=13))+
+     ylab("")+
+     xlab("")+ 
+     stat_compare_means(method="wilcox.test",
+                                comparisons = list(c(1,4)),
+                                color="red", label.y = 70,
+                                aes(label = ..p.signif..))+
+        theme(legend.position = "None",
+              axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+      ylab("Percent of cells (%)")
+   
+  k
+  # pdf(file = paste0(dataDir,"/SummaryFigures/GeneUsage.pdf"), width = 10, height = 6)
+  # plot(k)
+  # dev.off()
+```
+
+```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=10}
+#pdf(file = paste0(dataDir,"/SummaryFigures/GeneUsagePercentage.pdf"), width = 8, height = 12)
+#dev.off()
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=3}
+p1 <- plotGeneUsageBoxplot(inDF=igHGeneUsg_V,vOrJ="V", ylabStr="VH (%)")
+p2 <- plotGeneUsageBoxplot(inDF=igHGeneUsg_J,vOrJ="J", ylabStr="JH (%)")
+
+p1 <- p1+theme(legend.position = "top")
+p2 <- p2+theme(legend.position = "None")
+#pdf(file = paste0(dataDir,"/SummaryFigures/VJGeneUsage.pdf"), width = 15, height = 8)
+plot_grid(plotlist = list(p1,p2), ncol = 1, label_y = "")
+#dev.off()
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+p1 <- plotGeneUsageBoxplot2(inDF=igHGeneUsg_V,vOrJ="V", ylabStr="VH (%)")
+p2 <- plotGeneUsageBoxplot2(inDF=igHGeneUsg_J,vOrJ="J", ylabStr="JH (%)")
+
+p1 <- p1+theme(legend.position = "None")
+p2 <- p2+theme(legend.position = "None")
+#pdf(file = paste0(dataDir,"/SummaryFigures/VJGeneUsage_2.pdf"), width = 8, height = 15)
+plot_grid(plotlist = list(p1,p2), ncol = 2, label_y = "")
+#dev.off()
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=3}
+p1 <-plotGeneUsageBoxplot(inDF=igKGeneUsg_V,vOrJ="V", ylabStr="VK (%)")
+p2 <-plotGeneUsageBoxplot(inDF=igKGeneUsg_J,vOrJ="J", ylabStr="JK (%)")
+
+p1 <- p1+theme(legend.position = "top")
+p2 <- p2+theme(legend.position = "None")
+#pdf(file = paste0(dataDir,"/SummaryFigures/VJGeneUsageKappa.pdf"), width = 15, height = 8)
+plot_grid(plotlist = list(p1,p2), ncol = 1, label_y = "")
+#dev.off()
+```
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=4}
+p1 <-plotGeneUsageBoxplot2(inDF=igKGeneUsg_V,vOrJ="V", ylabStr="VK (%)")
+p2 <-plotGeneUsageBoxplot2(inDF=igKGeneUsg_J,vOrJ="J", ylabStr="JK (%)")
+
+p1 <- p1+theme(legend.position = "None")
+p2 <- p2+theme(legend.position = "None")
+#pdf(file = paste0(dataDir,"/SummaryFigures/VJGeneUsageKappa.pdf"), width = 15, height = 8)
+plot_grid(plotlist = list(p1,p2), ncol = 2, label_y = "")
+#dev.off()
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=3}
+p1 <- plotGeneUsageBoxplot(inDF=igLGeneUsg_V,vOrJ="V", ylabStr="VL (%)")
+p2 <- plotGeneUsageBoxplot(inDF=igLGeneUsg_J,vOrJ="J", ylabStr="JL (%)")
+
+p1 <- p1+theme(legend.position = "top")
+p2 <- p2+theme(legend.position = "None")
+#pdf(file = paste0(dataDir,"/SummaryFigures/VJGeneUsageLambda.pdf"), width = 15, height = 8)
+plot_grid(plotlist = list(p1,p2), ncol = 1, label_y = "")
+#dev.off()
+```
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=5}
+p1 <- plotGeneUsageBoxplot2(inDF=igLGeneUsg_V,vOrJ="V", ylabStr="VL (%)")
+p2 <- plotGeneUsageBoxplot2(inDF=igLGeneUsg_J,vOrJ="J", ylabStr="JL (%)")
+
+p1 <- p1+theme(legend.position = "None")
+p2 <- p2+theme(legend.position = "None")
+#pdf(file = paste0(dataDir,"/SummaryFigures/VJGeneUsageLambda.pdf"), width = 15, height = 8)
+plot_grid(plotlist = list(p1,p2), ncol = 2, label_y = "")
+#dev.off()
+```

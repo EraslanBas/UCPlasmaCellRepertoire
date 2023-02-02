@@ -1,0 +1,42 @@
+---
+title: "Analyse Conos output"
+output: html_notebook
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+set.seed(42)
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library("conos")
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+con <- readRDS(paste0(dataDir, "/RDSFiles/conosIntegratedSamps.rds"))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=5, fig.width=10}
+plotComponentVariance(con, space='PCA')
+```
+
+```{r}
+con$findCommunities(method=leiden.community, resolution=0.5)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=16, fig.width=20}
+con$plotPanel(font.size=4, palette = colorRampPalette(colors = brewer.pal(length(unique(con$clusters$leiden$groups)), "Accent")))
+
+```
+
+```{r cho=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=10, fig.width=15}
+plotClusterBarplots(con, legend.height = 0.1, )
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=16, fig.width=20}
+con$findCommunities(method = igraph::walktrap.community, steps=7)
+
+```
+

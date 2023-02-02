@@ -1,0 +1,125 @@
+---
+title: "Comparison of transcriptome of the technical replicates"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+set.seed(42)
+library(knitr)
+library(cowplot)
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(RColorBrewer)
+
+reticulate::use_python("/anaconda3/bin/python", required = T)
+rownames(samples) <- samples$SampleNames
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+validatedAntibodies <- read.csv(paste0(dataDir,"/ValidatedAntibodies.csv"), stringsAsFactors = F)
+samps <- readRDS(paste0(dataDir, "/RDSFiles/seuratIntegratedSamples3_01.rds"))
+markerGenes <- readRDS(paste0(dataDir, "/RDSFiles/seuratIntSampObjMarkers_01.rds"))
+
+names(markerGenes) <- names(samps)
+
+```
+
+```{r}
+findCellSample <- function(cellID, sName){
+  
+  possibleSamples <- grep(sName, samples$SampleNames)
+  possibleCellIDs <- paste0(cellID, "_",samples[possibleSamples,"SampleIdentifier"])
+  for(elem in 1:length(possibleCellIDs)){
+    if(any(grepl(possibleCellIDs[elem], colnames(samps@assays$RNA))))
+      return(samples[possibleSamples[elem],"SampleIdentifier"])
+  }
+  
+  return("None")
+  
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=15}
+plotAntibody <- function(i){
+   cellID <- strsplit(as.character(validatedAntibodies[i,"CellID"]),"-")[[1]][1]
+  cellSample <- findCellSample(cellID,sName=validatedAntibodies[i,"SampleName"])
+  
+  if(cellSample == "None"){
+    print(paste0("Cell ", cellID, " is not available in sample ", validatedAntibodies[i,"SampleName"]))
+  }else{
+      serObj <- samps 
+  
+      #print(DimPlot(serObj, reduction = "umap")+ggtitle(unique(serObj$orig.ident)))
+    
+      # if(markerGenes[[cellSample]] != "None"){
+      #     print(DoHeatmap(serObj, features = markerGenes[[cellSample]]$gene) + 
+      #         theme(axis.text.y =element_text(size=10)))
+      #     print(markerGenes[[cellSample]])
+      # }
+      CanonicalSampleName <- samples[samples$SampleIdentifier==cellSample,"CanonicalSampleName"]
+      inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/MergedVDJReplicates/",CanonicalSampleName,
+                       "/filtered_single_light_heavy_paired_clone-pass.tab"),
+                       sep="\t", header=TRUE, stringsAsFactors = F)
+      cellIndex <- grep(cellID, inClones$CELL)
+      cloneID <- inClones[cellIndex,"CLONE"]
+      
+      inClones <- prepareClones(inClones)
+    
+      
+      print(cloneID)
+      sub_db <- subset(inClones, CLONE == cloneID)
+          
+      serClusters <- serObj$seurat_clusters
+      if(nrow(sub_db) > 4){
+        cloneInfo = generateLineageClone(sub_db, serClusters)
+        print(plotClone(cloneInfo, titleStr=paste0("Sample ",CanonicalSampleName, " clone ", cloneID)))
+        print(plotCloneWithCluster(cloneInfo, titleStr=paste0("Sample ",CanonicalSampleName, " clone ", cloneID), numberOfClusters=length(unique(serClusters))))
+      }
+      
+      
+      sampleDonor <- validatedAntibodies[i,"DonorID"]
+      donorClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",sampleDonor,
+                       "/filtered_single_light_heavy_paired_clone-pass.tab"),
+                sep="\t", header=TRUE, stringsAsFactors = F)
+      donorClones <- prepareClones(donorClones)
+      
+      cellInd <- grep(cellID, donorClones$CELL)
+      donorClone <- donorClones[cellInd,"CLONE"]
+      donor_clone <- subset(as.data.frame(donorClones), CLONE == donorClone)
+      
+      if(nrow(sub_db) > 4){
+        donorCloneInfo <- generateLineageClone(donor_clone, mergeWithTranscriptome=F)
+        print(plotClone(donorCloneInfo, titleStr=paste0("Donor ",sampleDonor, " clone ", donorClone)))
+      }
+      
+      
+      clonalCells <- sub_db$CELL
+      clonalCells <- sapply(clonalCells, function(x){strsplit(x,"-")[[1]][1]})
+      clonalCells <- paste0(clonalCells,"_",cellSample)
+      
+      cellsOfObject <- colnames(serObj@assays$RNA)
+      serObj$clonalCell <- sapply(cellsOfObject, function(x){
+                            k <- strsplit(x,"_")[[1]][1]
+                            return(any(grepl(k, clonalCells)))
+                            })
+                          
+      print(DimPlot(serObj, reduction = "umap", cells.highlight=names(which(serObj$clonalCell)), sizes.highlight=3)+
+              ggtitle(paste0("Sample  ",CanonicalSampleName, " Clone ", cloneID)))
+      print(DimPlot(serObj, reduction = "umap", cells.highlight=names(which(serObj$clonalCell)), split.by="ident",sizes.highlight=3)+
+              ggtitle(paste0("Sample  ",CanonicalSampleName, " Clone ", cloneID)))
+  
+  }
+}
+  
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=15}
+plotAntibody(6)
+```
+

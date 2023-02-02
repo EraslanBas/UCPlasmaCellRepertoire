@@ -1,0 +1,118 @@
+---
+title: "Donor clonal lineage trees"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=8}
+allKs <-  data.frame() 
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18", "UC20")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  ss <- as.data.table(unique(inClones[,c("CLONE","SAMPLETYPE","NumberOfClonalCells")]))
+  ss[,Composition:=paste(sort(SAMPLETYPE),collapse = ","),by=CLONE]
+  ss$SAMPLETYPE <- NULL
+  ss <- unique(ss)
+  
+  k <- as.data.frame(table(ss[,c("NumberOfClonalCells","Composition")]))
+  k$donor <- elem
+  allKs <- rbind(allKs, k)
+  
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=2}
+allKs$NumberOfClonalCells <- as.numeric(as.character(allKs$NumberOfClonalCells))
+allKs <- allKs[allKs$Freq != 0,]
+allKs$donor <- factor(allKs$donor, levels = c("UC3","UC10","UC15","UC16","UC17","UC18","UC20"))
+ggplot(data=allKs, aes(x=Freq, y=NumberOfClonalCells, fill=Composition)) +
+    geom_point(size=2, shape=21, alpha=0.7)+
+    scale_y_continuous(trans='log2')+
+    #stat_summary(fun.data=mean_sdl, mult=1, 
+    #             geom="pointrange", color="red")+
+    facet_wrap(.~donor, nrow = 1)+
+    theme_bw()+
+    xlab("Number of clones")+scale_x_continuous(breaks = c(1,2,4,8,16,32), labels = c(1,2,4,8,16,32), trans='log2')+
+    ylab("Number of cells in the clone")+theme(legend.position = "top")
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=1.5}
+plots <- list()
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18", "UC20")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  inClones <- inClones[inClones$C_CALL_General != "",]
+  ss <- as.data.table(table(inClones[,c("CLONE", "SAMPLETYPE")]))
+  colnames(ss) <- c("CLONE","SAMPLETYPE", "NoOfCells")
+  ss[,percentOfClass:=(NoOfCells/sum(NoOfCells))*100,by=CLONE]
+  
+  data_wide <- dcast(ss, CLONE  ~ SAMPLETYPE, value.var="NoOfCells")
+  data_wide$donor <- elem
+  
+  axisLim <- max(data_wide$UC_INF, data_wide$UC_LessINF)
+  if(elem=="UC10"){
+    axisLim <- min(axisLim, 100)
+  }else{
+    axisLim <- min(axisLim, 200)
+  }
+  
+  p <- ggplot(data=data_wide, aes(x=UC_INF, y=UC_LessINF)) +
+    geom_point(size=2, shape=20, alpha=0.5, color="blue")+
+    xlim(0,axisLim)+ylim(0,axisLim)+
+    ggtitle(elem)+xlab("")+
+    ylab("")
+  
+  plots <- lappend(plots,p)
+}
+
+plot_grid(plotlist = plots, nrow = 1)
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3, fig.height=3}
+allData <-  data.frame() 
+par(mfrow = c(1,5))
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17","UC18","UC20")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  inClones <- inClones[inClones$C_CALL_General != "",]
+  ss <- as.data.table(table(inClones[,c("CLONE", "C_CALL_General")]))
+  colnames(ss) <- c("CLONE","C_CALL_General", "NoOfCells")
+  ss[,percentOfClass:=(NoOfCells/sum(NoOfCells))*100,by=CLONE]
+  
+  data_wide <- dcast(ss, CLONE  ~ C_CALL_General, value.var="percentOfClass")
+  data_wide$donor <- elem
+  allData <- rbind(allData, data_wide)
+  
+  #heatscatter(data_wide$IGHA, data_wide$IGHG, log='xy')
+  pheatmap(data_wide[,2:4], treeheight_row = 0, treeheight_col = 0,
+          cluster_cols = F, show_rownames = F, legend = T, main=elem,border_color = NA )
+  
+}
+allData$donor <- factor(allData$donor, levels = c("UC3", "UC10", "UC15", "UC16","UC17"))
+ggplot(data=allData, aes(x=IGHA, y=IGHG)) +
+    geom_point(size=2, shape=20, alpha=0.5, color="blue")+
+  facet_wrap(.~donor, nrow = 1,  scales = "free")
+
+```

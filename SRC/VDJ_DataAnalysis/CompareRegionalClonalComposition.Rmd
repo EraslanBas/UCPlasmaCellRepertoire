@@ -1,0 +1,247 @@
+---
+title: "Clonal composition comparison across colon regions"
+output: html_document
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+rownames(samples) <- samples$SampleNames
+library(plyr)
+library(gtools)
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=4}
+calculateOverlapFreq <- function(inClones1, inClones2){
+  
+  k=0
+  cSize=100
+  percIntersect = c()
+  while( k < 1000){
+    s1 <- inClones1[sample(c(1:nrow(inClones1)), size = cSize, replace=F),]
+    s2 <- inClones2[sample(c(1:nrow(inClones2)), size = cSize, replace=F),]
+    
+    percIntersect <- c(percIntersect, ((length( which(s1$CLONE %in% s2$CLONE)) + length( which(s2$CLONE %in% s1$CLONE))) / (cSize*2))*100 )
+    k <- k+1
+  }
+    
+  return(percIntersect)
+  
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=9}
+comp_pat= c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22", "UC4", "UC9", "UC14", "UC19","UC23",
+            "Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5", "Healthy6")
+
+allDFsCombined <- data.frame()
+
+
+for(elem in unique(samples$DonorID)){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 2)
+
+  distinct_regions = list() 
+  
+  UReg = unique(inClones$sampleRegion)
+  UReg = UReg[order(UReg)]
+  for(i in UReg){
+    distinct_regions <- lappend(distinct_regions, inClones[inClones$sampleRegion == i,])
+  }
+  
+  names(distinct_regions) <- UReg
+  
+  if(length(distinct_regions) > 1){
+      allDFs <- data.frame(stringsAsFactors = F)
+      
+      for(i in 1:(length(distinct_regions) )){
+        
+         myS1 <- distinct_regions[[i]]
+        
+         for(j in i:(length(distinct_regions))){
+            
+            myS2 <- distinct_regions[[j]]
+            
+            k <- calculateOverlapFreq(inClones1=myS1, inClones2=myS2)
+            tempDf = data.frame(percOverlap=k, i = names(distinct_regions)[i], j = names(distinct_regions)[j], stringsAsFactors = F)
+            tempDf$compType = "sameRegion"
+            
+            if(names(distinct_regions)[i] != names(distinct_regions)[j]){
+                if(strsplit(names(distinct_regions)[i], "-")[[1]][1] ==  strsplit(names(distinct_regions)[j], "-")[[1]][1]){
+                   tempDf$compType = "sameInflammation"
+                }else{
+                  tempDf$compType = "differentInflammation"
+                }
+              
+            }
+            
+            allDFs <- rbind(allDFs, tempDf)
+         }
+      }
+      
+      allDFs$pairName <- paste0(allDFs$i, " vs. ",allDFs$j)
+      #ss <- ddply(allDFs, "pairName", summarise, grp.mean=mean(percOverlap))
+      #allDFs <- merge(allDFs, ss, by="pairName")
+      allDFs$Donor = elem
+      allDFs$SampleType <- unique(samples[samples$DonorID == elem,"DonorAttribute"])
+      
+      allDFsCombined <- rbind(allDFsCombined, allDFs)
+      # pNames <- as.character(unique(allDFs$pairName))
+      # cListComb = combinations(n=length(pNames),r = 2, v=pNames, set=TRUE, repeats.allowed=FALSE)
+      # 
+      # 
+      # myClist = list()
+      # 
+      # for(i in 1:nrow(cListComb)){
+      #   myClist <- lappend(myClist, c(cListComb[i,1], cListComb[i,2]))
+      # }
+      # 
+      # allDFs$pairName <- factor(allDFs$pairName)
+      # 
+      # print(ggplot(allDFs, aes(y=percOverlap, x=pairName)) +
+      #     geom_violin(trim=FALSE, aes(fill=pairName))+
+      #     #geom_density(alpha=0.6)+
+      #     stat_summary(fun.data="mean_sdl", 
+      #                geom="crossbar", width=0.2, color="red")+
+      #     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+      #     stat_compare_means(method="wilcox.test",paired = FALSE,
+      #                               comparisons = myClist,
+      #                               color="red",
+      #                              aes(label = ..p.signif..))+
+      #     labs(x="", x = "Clonal overlap percentage (%)")+
+      #     theme_bw()+ggtitle(elem)+theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+      # 
+  }
+
+}
+ 
+
+```
+
+```{r fig.width=10, fig.height=4}
+ allDFsCombined$DonorPairName = paste0(allDFsCombined$Donor, "_",allDFsCombined$pairName)
+
+ allDFsCombined <- data.table(allDFsCombined)
+ allDFsCombined[,donorGrpMedian := median(percOverlap),by=DonorPairName]
+ allDFsCombined[,grpMedian := median(percOverlap),by=pairName]
+ 
+ allDFsCombined$xType = sapply(allDFsCombined$pairName,function(x){strsplit(x,"-")[[1]][1]})
+ allDFsCombined$xType <- factor(allDFsCombined$xType, levels = c("Healthy ", "UC_NonINF ", "UC_LessINF ", "UC_INF "))
+
+ allDFsCombined$compType <- factor(allDFsCombined$compType, levels = c("sameRegion", "sameInflammation", "differentInflammation"))
+ allDFsCombined$SampleType <- factor(allDFsCombined$SampleType, levels = c("Healthy", "UC_NonINF", "UC"))
+ 
+ 
+ deneme <- unique((allDFsCombined[,c("pairName", "compType", "grpMedian", "SampleType", "xType")]))
+ rownames(deneme) <- deneme$pairName
+ 
+ deneme[order(compType, SampleType, xType, -grpMedian)]$pairName
+ 
+ allDFsCombined$pairName <- factor(allDFsCombined$pairName, levels = deneme[order(compType, SampleType, xType, -grpMedian)]$pairName)
+ 
+ allDFsCombined[allDFsCombined$compType == "differentInflammation", "xType"] <- "UC_INF - UC_LessINF"
+ ggplot(allDFsCombined, aes(y=percOverlap, x=pairName)) +
+          geom_violin(trim=FALSE,  aes(fill=xType))+
+          facet_wrap(.~compType, scales = "free_x")+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+          # stat_compare_means(method="wilcox.test",paired = FALSE,
+          #                           comparisons = myClist,
+          #                           color="red",
+          #                          aes(label = ..p.signif..))+
+          labs(x="", x = "Clonal overlap percentage (%)")+
+          #scale_y_continuous(trans = "log2")+
+          scale_fill_manual(values=c("lightskyblue1", "palegreen", "peachpuff", "lightcoral", "thistle2"))+
+          theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, size=12))+ylab("Percent of clonal overlap")
+ 
+ ggplot(allDFsCombined, aes(y=percOverlap, x=xType)) +
+          geom_violin(trim=FALSE,  aes(fill=xType))+
+          facet_wrap(.~compType, scales = "free_x")+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+          # stat_compare_means(method="wilcox.test",paired = FALSE,
+          #                           comparisons = myClist,
+          #                           color="red",
+          #                          aes(label = ..p.signif..))+
+          labs(x="", x = "Clonal overlap percentage (%)")+
+          #scale_y_continuous(trans = "log2")+
+          scale_fill_manual(values=c("lightskyblue1", "palegreen", "peachpuff", "lightcoral", "thistle2"))+
+          theme_minimal()+theme(axis.text.x = element_text(angle = 90, hjust = 1, size=12))+ylab("Percent of clonal overlap")
+
+
+```
+```{r fig.width=14, fig.height=5}
+
+allDFsCombined$Donor <- factor(allDFsCombined$Donor, levels = c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22","UC4", "UC9", "UC14","UC19", "UC23",
+                      "Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy6")) 
+
+ggplot(allDFsCombined, aes(y=percOverlap, x= pairName)) +
+          geom_violin(trim=FALSE,  aes(fill=compType))+
+          facet_grid(~Donor, scales = "free_x")+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+          # stat_compare_means(method="wilcox.test",paired = FALSE,
+          #                           comparisons = myClist,
+          #                           color="red",
+          #                          aes(label = ..p.signif..))+
+          labs(x="", x = "Clonal overlap percentage (%)")+
+          #scale_y_continuous(trans = "log2")+
+          scale_fill_manual(values=c("lightskyblue1", "palegreen", "peachpuff", "lightcoral", "thistle2"))+
+          theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, size=12), legend.position = "top")+ylab("Percent of clonal overlap")
+
+```
+
+```{r}
+kkDonor <- as.data.frame(unique(allDFsCombined[,c("i", "j", "Donor", "DonorPairName", "donorGrpMedian", "compType")]))
+kkDonor$ratio1 <- NA
+kkDonor$ratio2 <- NA
+
+for(elem in 1:nrow(kkDonor)){
+  
+  if(kkDonor[elem,"compType"] %in% c("sameInflammation", "differentInflammation")){
+       myDon = kkDonor[elem,"Donor"]
+       childVal = kkDonor[elem,"donorGrpMedian"]
+       parent1 = kkDonor[elem,"i"]
+       parent2 = kkDonor[elem,"j"]
+       
+       parent1Val = kkDonor[kkDonor$i == parent1 & kkDonor$j == parent1 & kkDonor$Donor == myDon, "donorGrpMedian" ]
+       parent2Val = kkDonor[kkDonor$i == parent2 & kkDonor$j == parent2 & kkDonor$Donor == myDon, "donorGrpMedian" ]
+       
+       kkDonor[elem, "ratio1"] <- round(childVal / parent1Val, digits = 2)
+       kkDonor[elem, "ratio2"] <- round(childVal / parent2Val, digits = 2)
+    
+  }
+}
+
+write.csv(kkDonor, file = paste0(dataDir,"/ClonalOverlapRatios.csv"), quote = F, row.names = F)
+
+kkDonorTemp <- kkDonor[ !is.na(kkDonor$ratio1), c("compType", "ratio1", "ratio2") ]
+
+kkDonorTempMelt <- melt(kkDonorTemp, id.vars = "compType")
+
+ggplot(kkDonorTempMelt, aes(y=value, x= compType)) +
+          geom_violin(trim=FALSE,  aes(fill=compType))+
+       stat_summary(fun.data="mean_sdl", 
+                 geom="crossbar", width=0.2, color="red")+
+      stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+      stat_compare_means(method="wilcox.test",paired = FALSE,
+                                comparisons = list(c("differentInflammation", "sameInflammation")),
+                                color="red",
+                               aes(label = ..p.signif..))+
+      ylab("Ratio to background")
+      theme_bw()+ggtitle(elem)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+
+```
+

@@ -1,0 +1,60 @@
+---
+title: "Plot expanded lineage trees"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=10}
+#c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22","UC4", "UC9", "UC14", "UC19","UC23","Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy7", "Healthy8", "Healthy9")
+
+for(elem in c("UC3","UC10","UC15", "UC16","UC17","UC18","UC20","UC22","UC24", 
+               "UC4","UC9","UC14","UC19","UC23","UC25",
+               "Healthy1","Healthy2","Healthy3","Healthy4",
+               "Healthy5", "Healthy7","Healthy8","Healthy9")){
+
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  
+  if(elem == "UC3"){
+    selectedCells = c("AGACGTTGTTAGAACA-1_UC6RN1", "AGCGTATGTGATGTCT-1_UC6RN1")
+  }else if (elem == "UC16"){
+    selectedCells = c("TTTATGCTCTCTGCTG-1_UC16NinfCecum", "AACCATGGTGTCAATC-1_UC16NinfCecum")
+  }else if(elem == "UC18"){
+    selectedCells = c("TACTCGCAGAGTCTGG-1_UC18TcB", "GTAGGCCCAAGTTAAG-1_UC18CeCB")
+  }
+  
+  selectedClones <- unique(inClones[inClones$CELL %in% selectedCells,"CLONE"])
+
+  for(cloneNo in 1:length(selectedClones) ){
+    cloneID = selectedClones[cloneNo]
+    cellID = selectedCells[cloneNo]
+    
+    sub_db <- subset(inClones, CLONE == cloneID)
+    print(table(sub_db$SAMPLETYPE))
+    print(table(sub_db$sampleRegion))
+    print(table(sub_db$C_CALL))
+    if(nrow(sub_db) > 4 ){
+      cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F, mergeWithDonorID=F, padEnd=T)
+      pdf(file = paste0("./PDFFigures/CloneLineageTrees/Donor_",elem,"_Clone_",cloneID), width = 8,  height = 6) 
+        plotClone(clone = cloneInfo, titleStr=paste0(elem, " clone ", cloneID, " cell ", cellID))
+      dev.off()
+    }
+  }
+  
+}
+```

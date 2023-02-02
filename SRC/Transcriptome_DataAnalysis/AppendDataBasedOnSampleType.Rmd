@@ -1,0 +1,239 @@
+---
+title: "Transcriptome Per Sample Types"
+output:
+  html_document:
+  df_print: paged
+---
+  
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(gtools)
+library(RColorBrewer)
+library(calibrate)
+library('sva')
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(liger)
+library(Seurat)
+library(SeuratWrappers)
+reticulate::use_python("/home/beraslan/anaconda3/bin/python", required = T)
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+donorObjects <-readRDS(paste0(dataDir, "/RDSFiles/donorObjectsSelectedCells.rds"))
+
+sampleTypeObjects <- list()
+
+for(elem in unique(as.character(samples$SampleAttributes))){
+
+  sampsTemp <- samples[samples$SampleAttributes == elem ,]
+
+  fTemp = data.frame()
+
+
+  print(sampsTemp[1,"SampleNames"])
+  allMatrix <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampsTemp[1,"SampleNames"]))
+  colnames(allMatrix) <- paste0(colnames(allMatrix), "_", sampsTemp[1,"SampleIdentifier"])
+  cellB <- unique(colnames(allMatrix))
+
+  vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampsTemp[1,"SampleNames"],"/filtered_contig_annotations.csv"),
+                       stringsAsFactors = F)
+  vdjCellB <- unique(colnames(allMatrix))
+  vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+  vdjCellB <- paste0(vdjCellB,  "_", sampsTemp[1,"SampleIdentifier"])
+  cellB <- cellB[cellB %in% vdjCellB]
+
+  dObject <- donorObjects[[as.character(sampsTemp[1,"DonorID"])]]
+  cellB <- cellB[cellB %in% colnames(dObject@assays$RNA)]
+  allMatrix <- allMatrix[,cellB]
+
+
+  metaDF <- data.frame(sampleName=rep(as.character(sampsTemp[1,"SampleNames"]),ncol(allMatrix)),
+                       position = rep(as.character(sampsTemp[1,"Position"]),ncol(allMatrix)),
+                       donorID=rep(as.character(sampsTemp[1,"DonorID"]),ncol(allMatrix)),
+                       stim=rep(as.character(sampsTemp[1,"SampleAttributes"]),ncol(allMatrix)),
+                       replicates=rep(as.character(sampsTemp[1,"Replicates"]),ncol(allMatrix)),
+                       lane=rep(as.character(sampsTemp[1,"Lane"]),ncol(allMatrix)),
+                       stringsAsFactors = F)
+
+  if(length(sampsTemp$SampleNames) > 1){
+    for(i in 2:length(sampsTemp$SampleNames)){
+      print(sampsTemp[i,"SampleNames"])
+      k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampsTemp[i,"SampleNames"]))
+      colnames(k) <- paste0(colnames(k), "_", sampsTemp[i,"SampleIdentifier"])
+
+      vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampsTemp[i,"SampleNames"],"/filtered_contig_annotations.csv"),
+                           stringsAsFactors = F)
+      cellB <- unique(colnames(k))
+      vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+      vdjCellB <- paste0(vdjCellB,  "_", sampsTemp[i,"SampleIdentifier"])
+      cellB <- cellB[cellB %in% vdjCellB]
+      dObject <- donorObjects[[as.character(sampsTemp[i,"DonorID"])]]
+      cellB <- cellB[cellB %in% colnames(dObject@assays$RNA)]
+
+
+      k <- k[,cellB]
+
+
+      allMatrix <- cbind(allMatrix, k)
+
+      tmpmetaDF <- data.frame(sampleName=rep(as.character(sampsTemp[i,"SampleNames"]),ncol(k)),
+                              position = rep(as.character(sampsTemp[i,"Position"]),ncol(k)),
+                              donorID=rep(as.character(sampsTemp[i,"DonorID"]),ncol(k)),
+                              stim=rep(as.character(sampsTemp[i,"SampleAttributes"]),ncol(k)),
+                              replicates=rep(as.character(sampsTemp[i,"Replicates"]),ncol(k)),
+                              lane=rep(as.character(sampsTemp[i,"Lane"]),ncol(k)),
+                              stringsAsFactors = F)
+
+      metaDF <- rbind(metaDF, tmpmetaDF)
+    }
+  }
+
+
+  serObj <- CreateSeuratObject(counts = allMatrix, project = elem, min.features=300, min.cells = 50)
+  x <- metaDF$sampleName
+  names(x) <- colnames(allMatrix)
+  serObj$sampleName <-x
+
+  x <- metaDF$position
+  names(x) <- colnames(allMatrix)
+  serObj$position <- x
+
+  x <- metaDF$stim
+  names(x) <- colnames(allMatrix)
+  serObj$stim <- x
+
+  x <- metaDF$replicates
+  names(x) <- colnames(allMatrix)
+  serObj$replicates <- x
+
+  x <- metaDF$lane
+  names(x) <- colnames(allMatrix)
+  serObj$lane <- x
+
+  x <- metaDF$donorID
+  names(x) <- colnames(allMatrix)
+  serObj$donorID <- x
+
+  serObj$donorLane <- paste0(serObj$donorID,"_",serObj$lane)
+
+  serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+
+  allGenes <- rownames(serObj@assays$RNA)
+  mtGenes <- allGenes[grep("^MT-", rownames(serObj@assays$RNA))]
+  otherGenes <- allGenes[allGenes %ni% c(mtGenes, IgGenes)]
+  serObj <- subset(x=serObj, features = otherGenes)
+
+  serObj <- subset(serObj, subset =  percent.mt < 5)
+  serObj <- NormalizeData(serObj, verbose = FALSE)
+
+  m = as.matrix(GetAssayData(serObj))
+  com = ComBat(m, serObj$donorLane, prior.plots=FALSE, par.prior=TRUE)
+
+  serObj@assays$RNA@data <- com
+
+  serObj <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 2000)
+  serObj <- ScaleData(serObj, do.center = FALSE)
+  serObj <- RunPCA(serObj, npcs = 50, verbose = FALSE)
+
+  #serObj <- RunOptimizeALS(serObj, k = 5, lambda = 5, split.by = "donorID")
+  #serObj <- RunQuantileAlignSNF(serObj, split.by = "donorID")
+# 
+# 
+   serObj <- FindNeighbors( serObj, dims = 1:50)
+   serObj <- FindClusters( serObj, resolution = 0.5)
+ 
+   #serObj <- RunTSNE( serObj, dims = 1:50)
+   serObj <- RunUMAP( serObj, dims = 1:50)
+ 
+   sampleTypeObjects <- lappend(sampleTypeObjects, serObj)
+ 
+ }
+
+saveRDS(sampleTypeObjects, paste0(dataDir, "/RDSFiles/sampleTypeObjects_combatDonorLane.rds"))
+
+```
+
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=10}
+sampleTypeObjects <- readRDS(paste0(dataDir, "/RDSFiles/sampleTypeObjects_combatDonorLane.rds"))
+allObjMarkers <- readRDS(paste0(dataDir, "/RDSFiles/allObjMarkersPerSampleType_combatDonorLane.rds"))
+#allObjMarkers <- list()
+
+for(i in 1:length(sampleTypeObjects)){
+  serObj <- sampleTypeObjects[[i]]
+  print(paste0("############################   ",unique(serObj$stim), "   ###########################"))
+  serObj$objectUniqueChar <- serObj$stim
+  
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.005, label = TRUE)+
+          ggtitle(paste0(unique(serObj$orig.ident))," seurat clusters"))
+  print(DimPlot(serObj, reduction = "umap", split.by = "seurat_clusters", pt.size = 0.05)+
+          ggtitle(paste0(unique(serObj$orig.ident))," Sample Name"))
+ 
+
+  serObj$objectUniqueChar <- serObj$stim
+
+  if(length(unique(serObj$seurat_clusters)) > 1){
+    plotClusterPercentage(serObj, objectUniqueChar=unique(serObj$objectUniqueChar))
+    
+    #obj.markers <- FindAllMarkers(serObj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+    #obj.markers <- obj.markers[obj.markers$p_val_adj < 0.1,]
+    
+    #allObjMarkers <- lappend(allObjMarkers, obj.markers)
+    obj.markers <- allObjMarkers[[i]]
+    top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+    
+    for(myClustI in unique(serObj$seurat_clusters)){
+      print(paste0("Cluster ", myClustI))
+      print(paste0(unlist(top10[top10$cluster == myClustI, "gene"]), collapse = ", "))
+    }
+    
+    print(DoHeatmap(serObj, features = top10$gene) +
+            theme(axis.text.y =element_text(size=6)))
+
+     getDonorClusterGOTerms(serObj, obj.markers, fileAppendStr = "_combatDonorLaneTRCellsRemoved")
+     
+      print(DimPlot(serObj, reduction = "umap", group.by = "sampleName", pt.size = 0.05)+
+          ggtitle(paste0(unique(serObj$orig.ident))," Sample Name"))
+      print(DimPlot(serObj, reduction = "umap", group.by = "lane", pt.size = 0.05)+
+            ggtitle(paste0(unique(serObj$orig.ident)), " Lane"))
+      print(DimPlot(serObj, reduction = "umap", group.by = "replicates", pt.size = 0.05)+
+              ggtitle(paste0(unique(serObj$orig.ident))," replicates"))
+      print(DimPlot(serObj, reduction = "umap", group.by = "donorID", pt.size = 0.05)+
+              ggtitle(paste0(unique(serObj$orig.ident))," sample attribute"))
+      print(DimPlot(serObj, reduction = "umap", split.by = "donorID", pt.size = 0.05)+
+              ggtitle(paste0(unique(serObj$orig.ident))," sample attribute"))
+      print(DimPlot(serObj, reduction = "umap", group.by = "position", pt.size = 0.05)+
+              ggtitle(paste0(unique(serObj$orig.ident))," position"))
+      print(DimPlot(serObj, reduction = "umap", split.by = "position", pt.size = 0.05)+
+              ggtitle(paste0(unique(serObj$orig.ident))," position"))
+  }else{
+    allObjMarkers <- lappend(allObjMarkers, NULL)
+  }
+  
+}
+#names(allObjMarkers) <- unique(as.character(samples$SampleAttributes))
+#saveRDS( allObjMarkers, paste0(dataDir, "/RDSFiles/allObjMarkersPerSampleType_combatDonorLane.rds"))
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=10}
+# for(i in 1:length(sampleTypeObjects)){
+#     serObj <- sampleTypeObjects[[i]]
+#     print(paste0("############################   ",unique(serObj$orig.ident), "   ###########################"))
+#   for(k in 1:length(rdsysM)){
+# 
+#         if(any(rdsysM[[k]] %in% rownames(serObj@assays$RNA))){
+#           print(paste0(names(rdsysM)[k]," markers"))
+#           print(FeaturePlot(serObj, features = rdsysM[[k]], min.cutoff = "q9", ncol = 3))
+#         }else{
+#           print(paste0("None of the", names(rdsysM)[k]," markers are expressed"))
+# 
+#     }
+#    }
+# }
+```

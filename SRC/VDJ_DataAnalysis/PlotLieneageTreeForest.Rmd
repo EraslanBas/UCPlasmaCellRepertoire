@@ -1,0 +1,32 @@
+---
+title: "Plot The Forest of Lieneage Trees"
+output: html_document
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+reticulate::use_python("/anaconda3/bin/python", required = T)
+rownames(samples) <- samples$SampleNames
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=4}
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC4", "UC9", "UC14", "Healthy1", "Healthy2", "Healthy3")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 20)
+  
+  
+  cloneInfo <- generateLineageClone(inClones, mergeWithTranscriptome = F, mergeWithDonorID=F, padEnd=T)
+  plotClone(cloneInfo, titleStr=paste0(elem, " clone ", cloneID))
+    
+  
+  
+}
+```

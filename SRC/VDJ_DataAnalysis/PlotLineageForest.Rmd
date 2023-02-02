@@ -1,0 +1,123 @@
+---
+title: "Donor clonal lineage trees"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("scatterplot3d")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=10}
+
+allGraphs <- list()
+
+UC_pat= c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")
+UC_NonInf = c("UC4", "UC9", "UC14", "UC19","UC23")
+healthy= c("Healthy1", "Healthy2", "Healthy3", "Healthy4")
+
+for(elem in healthy){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 2)
+
+  top10Clones <- unique(inClones$CLONE)[1:50]
+   
+  for(cloneID in top10Clones){
+    print(cloneID)
+    sub_db <- subset(inClones, CLONE == cloneID)
+
+    if(nrow(sub_db) > 2){
+      cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F, mergeWithDonorID=F, padEnd=T)
+      myGraph <- getColoneGraph(clone=cloneInfo)
+      allGraphs <- lappend(allGraphs, myGraph)
+    }
+  }
+
+}
+
+
+#saveRDS(allGraphs, paste0(dataDir,"/RDSFiles/allGraphs_UC_pat.rds"))
+saveRDS(allGraphs, paste0(dataDir,"/RDSFiles/allGraphs_healthy.rds"))
+#saveRDS(allGraphs, paste0(dataDir,"/RDSFiles/allGraphs_NonInf.rds"))
+#allGraphs <- readRDS(paste0(dataDir,"/RDSFiles/allGraphs_UC_pat.rds"))
+```
+
+
+```{r}
+library("igraph")
+graph <- igraph::disjoint_union(allGraphs)
+
+```
+
+```{r fig.width=100, fig.height=100}
+
+
+graph <- delete_vertex_attr(graph, "label")
+graph <- delete_edge_attr(graph, "label")
+V(graph)$label <- ""
+V(graph)$vSize <- V(graph)$collapse_count / 8 
+V(graph)$vSize[ V(graph)$vSize < 1 ] <- 1
+V(graph)$vSize[ is.na(V(graph)$vSize)] <- 0.01
+
+
+png("healthy.png", heigh=400, width=400)
+
+coords <- layout_(graph, in_circle(), component_wise()) 
+#coords <- layout.fruchterman.reingold(graph, component_wise())
+
+plot(graph, layout = coords,
+ edge.arrow.mode=0, 
+ vertex.frame.color=V(graph)$vcolor,
+ vertex.shape="pie",
+ vertex.edge.width =50,
+ vertex.pie=V(graph)$cellPerc,
+ vertex.pie.color=list(c("black","white","lightblue", "bisque1","yellowgreen","khaki2")),
+ vertex.size=V(graph)$vSize,
+ edge.width = 1, rescale=TRUE, vertex.label=NA, vertex.label.dist=0.0,
+vertex.label.cex=50)
+
+#legend("topleft", c( "Healthy", "UC_NonINF", "UC_LessINF", "UC_INF"), 
+#         fill=c("lightblue", "bisque1", "yellowgreen", "khaki2"), cex=0.75, title = "Node fill color")
+#legend("topright", c("IGHG", "IGHA", "IGHM"), 
+#         fill=c("cyan", "magenta", "springgreen"), cex=0.75,title = "Node border color")
+  
+dev.off()
+
+
+plot(graph, layout=layout.drl(graph),
+ edge.arrow.mode=0, 
+ vertex.frame.color=V(graph)$vcolor,
+ vertex.shape="pie",
+ vertex.pie=V(graph)$cellPerc,
+ vertex.pie.color=list(c("black","white","lightblue", "bisque1","yellowgreen","khaki2")),
+ vertex.size=V(graph)$vSize,
+ edge.width = 10)
+      
+k <- allGraphs[[1]]
+k <- delete_vertex_attr(k, "label")
+k <- delete_edge_attr(k, "label")
+V(k)$label <- ""
+V(k)$vSize <- (V(k)$collapse_count+26)/ 5
+V(k)$vSize[ is.na(V(k)$vSize)] <- 0.2
+ 
+plot(k, layout=layout.drl(k),
+ edge.arrow.mode=0, 
+ vertex.frame.color=V(k)$vcolor,
+ vertex.shape="pie",
+ vertex.pie=V(k)$cellPerc,
+ vertex.pie.color=list(c("black","white","lightblue", "bisque1","yellowgreen","khaki2")),
+ vertex.size=V(k)$vSize,
+ edge.width = 2)
+```
+

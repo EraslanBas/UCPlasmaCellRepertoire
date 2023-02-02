@@ -1,0 +1,120 @@
+---
+title: Differential gene expression between the top clonotypes of inflamed and non-inflamed
+  samples
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+library(seqinr)  
+library(msa)
+library(ape)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+samples <- samples[samples$SampleNames %in% c("UC6RN1","UC6RINFA","UC10InfA", "UC10NonInfA"),]
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+getTopClones <- function(sampleName){
+  allContigs <- read.csv(paste0(dataDir,"/VDJ_Files/",sampleName,"/filtered_contig_annotations.csv"), stringsAsFactors = F)
+  allContigs <- allContigs[allContigs$raw_clonotype_id != "None",]
+  allContigs <- allContigs[allContigs$high_confidence == "True",]
+  allContigs <- allContigs[allContigs$chain %in% c("IGK","IGL","IGH"),]
+  allContigs$SampleNames <- sampleName
+  allContigs$raw_clonotype_idSample <- paste0(allContigs$SampleNames, allContigs$raw_clonotype_id)
+  allContigs <- as.data.table(allContigs)
+  allContigs[,NumberOfClonalCells := length(unique(barcode)),by=raw_clonotype_idSample]
+  allContigs <- allContigs[order(-NumberOfClonalCells),]
+  allContigs$NumberOfClonalCells <- factor(allContigs$NumberOfClonalCells, levels=unique(allContigs$NumberOfClonalCells))
+  allContigs$raw_clonotype_idSample <- factor(allContigs$raw_clonotype_idSample, levels=unique(allContigs$raw_clonotype_idSample))
+
+  allContigsSplit <- split(allContigs, f = allContigs$raw_clonotype_idSample)
+  allContigsSplit <- allContigsSplit[1:10]
+  return(do.call(rbind,allContigsSplit))
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+samps <-  readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+difExpGenes <- list()
+
+for(donorID in unique(samples$DonorID)){
+  
+  infS <- samples[samples$DonorID==donorID & samples$SampleAttributes == "UC_INF","SampleNames"]  
+  nonInfS <- samples[samples$DonorID==donorID & samples$SampleAttributes == "UC_LessINF","SampleNames"]  
+
+  inflamedSample <- getTopClones(sampleName=infS)
+  nonInflamedSample <- getTopClones(sampleName=nonInfS)
+ 
+  inflamedCells <- unique(inflamedSample$barcode)
+  inflamedCells <- sapply(inflamedCells, function(x){strsplit(x,"-")[[1]][1]})
+  nonInflamedCells <- unique(nonInflamedSample$barcode)
+  nonInflamedCells <- sapply(nonInflamedCells, function(x){strsplit(x,"-")[[1]][1]})
+
+  print(paste0("Donor ",donorID," for samples ",infS, " and ", nonInfS))
+  print(paste0("Top 10 cones of ",infS, " has ",length(inflamedCells)," cells and ", nonInfS, " has ",length(nonInflamedCells), " cells"))
+    
+  infSTrans <- samps[[infS]]
+  nonInfSTrans <- samps[[nonInfS]]
+  
+  infSTrans <- infSTrans[rownames(infSTrans[["RNA"]]) %ni% IgGenes,]
+  nonInfSTrans <- nonInfSTrans[rownames(nonInfSTrans[["RNA"]]) %ni% IgGenes,]
+
+  infSTrans <- subset(x=infSTrans, cells = inflamedCells)
+  nonInfSTrans <- subset(x=nonInfSTrans, cells = nonInflamedCells)
+  
+  immune.anchors <- FindIntegrationAnchors(object.list = list(infSTrans, nonInfSTrans), k.filter = 50)
+  immune.combined <- IntegrateData(anchorset = immune.anchors, dims = 1:50)
+
+  immune.combined <- ScaleData(immune.combined, verbose = FALSE)
+  immune.combined <- RunPCA(immune.combined, npcs = 50, verbose = FALSE)
+  Idents(immune.combined) <- "stim"
+
+  uc.response <- FindMarkers(immune.combined, ident.1 = "UC_INF", ident.2 = "UC_NonINF", verbose = FALSE)
+  #print(head(uc.response, n=20))
+
+  difExpGenes <- lappend(difExpGenes, uc.response)
+  
+}
+
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=4}
+names(difExpGenes) <- paste0("DON_", unique(samples$DonorID))
+difExpGenesNames <- lapply(difExpGenes, function(x){return(rownames(x[x$p_val_adj<0.1,]))})
+allGeneNames <- table(unlist(difExpGenesNames))
+
+
+dfM <- matrix(0, nrow=length(allGeneNames),
+              ncol=2)
+rownames(dfM) <- names(allGeneNames)
+colnames(dfM) <- paste0("DON_", unique(samples$DonorID))
+
+for(i in names(allGeneNames)){
+  for(j in paste0("DON_", unique(samples$DonorID))){
+    if(i %in% difExpGenesNames[[j]]){
+       dfM[i,j] <- difExpGenes[[j]][i,"avg_logFC"]
+    }
+  }
+}
+
+dfM[dfM==0] <- NA
+dfM[dfM>1.5] <- 1.5
+dfM[dfM < -1.5] <- -1.5
+
+pheatmap((dfM), na_col = "grey",treeheight_row = 0,  
+         treeheight_col = 0, cluster_col = F, cluster_rows = F,
+         legend = T, fontsize_row = 8, fontsize_col = 7, 
+         main="Differentially expressed genes in  top 10 clonotypes in inflamed samples \n compared to top 10 clonotypes in non-inflamed samples")
+```
+

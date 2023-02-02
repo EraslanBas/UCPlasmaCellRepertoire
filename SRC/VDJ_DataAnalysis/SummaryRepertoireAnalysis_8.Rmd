@@ -1,0 +1,211 @@
+---
+title: "Display clones per region"
+output: html_document
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=7}
+plotClonalForest <- function(donorID){
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",donorID,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  inClones$sampleRegion <- samples[as.character(inClones$SAMPLENAME),"Position"]
+  inClones$sampleRegion <- as.character(inClones$sampleRegion)
+  inClones$sampleRegion <- paste0(inClones$sampleRegion, " - ", inClones$SAMPLETYPE)
+  if(length(unique(inClones$sampleRegion)) > 1){
+      allRegions <- data.frame()
+  for(region in unique(inClones$sampleRegion)){
+    tpWTemp <- as.data.table(inClones[inClones$sampleRegion == region,])
+    tpWTemp[,NumberOfRegionalClonalCells := length(unique(CELL)),by=CLONE]
+    tpWTemp <- tpWTemp[order(-NumberOfRegionalClonalCells),]
+
+    maxCollapse <- c()
+    for(clone in unique(tpWTemp$CLONE)){
+      cCells <- tpWTemp[tpWTemp$CLONE == clone,]
+      cloneInfo <- generateLineageClone(cCells, mergeWithTranscriptome = F, mergeWithDonorID=F, padEnd=T)
+      maxCollapse <- c(maxCollapse, rep(max(cloneInfo@data$COLLAPSE_COUNT), nrow(cCells)))
+    }
+    
+    tpWTemp$maxCollapse <- maxCollapse
+    tpWTemp[,NumIGHA := length(which(C_CALL_General=="IGHA")),by=CLONE]
+    tpWTemp[,NumIGHG := length(which(C_CALL_General=="IGHG")),by=CLONE]
+    tpWTemp[,NumIGHM := length(which(C_CALL_General=="IGHM")),by=CLONE]
+    allRegions <- rbind(allRegions, as.data.frame(tpWTemp))
+  }
+  
+  allClones <- unique(allRegions[,c("SAMPLETYPE", "CLONE", "sampleRegion","NumberOfClonalCells", 
+                                    "NumberOfRegionalClonalCells", "maxCollapse",
+                                    "NumIGHA", "NumIGHG", "NumIGHM")])
+  
+   mostExpandedClones <- unique(sort(allClones$NumberOfClonalCells, decreasing=TRUE))[1:15]
+   mostExpandedClones <- mostExpandedClones[mostExpandedClones>20]
+   allClones$colorCloneSize <- "1"
+   allClones[allClones$NumberOfClonalCells %in% mostExpandedClones,"colorCloneSize"] <- allClones[allClones$NumberOfClonalCells %in% mostExpandedClones,"CLONE"]
+   
+   
+   print(ggplot(data=allClones, aes(x=NumberOfRegionalClonalCells, y=NumberOfClonalCells)) +
+    geom_point(aes(size=NumberOfRegionalClonalCells, color=colorCloneSize), alpha=0.5)+
+    scale_color_manual(values = colorRampPalette(brewer.pal(12, "Dark2"))(length(unique(allClones$colorCloneSize))))+
+    facet_wrap(.~sampleRegion)+
+    ggtitle("")+xlab("Number of clonal cells in the colon region")+ylab("Total number of clonal cells")+
+    guides(color = FALSE)+theme_minimal()+
+    theme(legend.position = "top")+
+    labs(size = "Number of clonal cells in the colon region")+ggtitle(donorID)+
+    scale_size(breaks = c(1,  5, 25,  50, 100, 150, 200), range = c(1,15), limits = c(1, 400))
+    )
+  }
+ 
+}
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=7}
+plotClonalForest2 <- function(donorID, sType=NULL){
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",donorID,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  
+  inClones$sampleRegion <- samples[as.character(inClones$SAMPLENAME),"Position"]
+  inClones$sampleRegion <- as.character(inClones$sampleRegion)
+  inClones$sampleRegion <- paste0(inClones$SAMPLETYPE, " - " ,inClones$sampleRegion)
+  
+  
+  allClones <- list()
+  
+  if(is.null(sType)){
+     for(sType in unique(inClones$SAMPLETYPE)){
+        tpWTemp <- as.data.table(inClones[inClones$SAMPLETYPE == sType,])
+        tpWTemp[,NumberOfSampleTypeClonalCells := length(unique(CELL)),by=CLONE]
+        tpWTemp <- tpWTemp[order(-NumberOfSampleTypeClonalCells),]
+        kk <- unique(sort(tpWTemp$NumberOfSampleTypeClonalCells, decreasing=TRUE))[1:min(10, length(unique(tpWTemp$NumberOfSampleTypeClonalCells)))]
+        kk <- kk[kk>5]
+        allClones <- lappend(allClones, unique(unlist(tpWTemp[tpWTemp$NumberOfSampleTypeClonalCells %in% kk,"CLONE"]))[1:10])
+     }
+  }else{
+      tpWTemp <- as.data.table(inClones[inClones$SAMPLETYPE == sType,])
+      tpWTemp[,NumberOfSampleTypeClonalCells := length(unique(CELL)),by=CLONE]
+      tpWTemp <- tpWTemp[order(-NumberOfSampleTypeClonalCells),]
+      kk <- unique(sort(tpWTemp$NumberOfSampleTypeClonalCells, decreasing=TRUE))[1:min(10, length(unique(tpWTemp$NumberOfSampleTypeClonalCells)))]
+      kk <- kk[kk>5]
+      allClones <- lappend(allClones, unique(unlist(tpWTemp[tpWTemp$NumberOfSampleTypeClonalCells %in% kk,"CLONE"]))[1:10])
+  }
+  
+  
+  allClones <- unlist(allClones)
+  inClones <- inClones[inClones$CLONE %in% allClones,]
+  
+  inClonesUp <- data.frame()
+   for(sRegion in unique(inClones$sampleRegion)){
+      tpWTemp <- as.data.table(inClones[inClones$sampleRegion == sRegion,])
+      tpWTemp[,NumberOfSampleRegionClonalCells := length(unique(CELL)),by=CLONE]
+      inClonesUp <- rbind(inClonesUp, as.data.frame(tpWTemp))
+    }
+  
+  
+  inClonesUp <- unique(inClonesUp[,c("SAMPLETYPE", "CLONE", "sampleRegion","NumberOfClonalCells", 
+                                  "NumberOfSampleRegionClonalCells")])
+  
+
+ k <- ggplot(data=inClonesUp, aes(x=NumberOfSampleRegionClonalCells, y=NumberOfClonalCells)) +
+  geom_point(aes(size=NumberOfSampleRegionClonalCells, color=CLONE), alpha=0.5)+
+  scale_color_manual(values = colorRampPalette(brewer.pal(12, "Dark2"))(length(unique(inClonesUp$CLONE))))+
+  facet_wrap(.~sampleRegion, ncol = length(unique(inClonesUp$NumberOfSampleRegionClonalCells)))+
+  ggtitle("")+xlab("Number of clonal cells in the colon region")+ylab("Total number of clonal cells")+
+  guides(color = FALSE)+theme_bw()+
+  theme(legend.position = "top")+
+  labs(size = "Number of clonal cells in the colon region")+ggtitle(donorID)+
+  scale_size(breaks = c(1,  5, 25,  50, 100, 150, 200, 250, 300), range = c(1,15), limits = c(1, 500))
+  
+   return(k)
+  
+ 
+}
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3, fig.height=3}
+for(donorID in as.character(unique(samples$DonorID))){
+  plotClonalForest(donorID)
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+plotList <- list()
+for(donorID in c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22")){
+  plotList <- lappend(plotList, plotClonalForest2(donorID))
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=5}
+#pdf(file = paste0(dataDir,"/SummaryFigures/OverlappingClonesPerRegion_UC.pdf"), width = 20, height = 10)
+plot_grid(plotlist = plotList, ncol = 4)
+#dev.off()
+plotClonalForest2(donorID)
+
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+plotList <- list()
+for(donorID in c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22")){
+  plotList <- lappend(plotList, plotClonalForest2(donorID, sType="UC_INF"))
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=5}
+#pdf(file = paste0(dataDir,"/SummaryFigures/OverlappingClonesPerRegion_UC_INF.pdf"), width = 20, height = 10)
+plot_grid(plotlist = plotList, ncol = 4)
+#dev.off()
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+plotList <- list()
+for(donorID in c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20")){
+  plotList <- lappend(plotList, plotClonalForest2(donorID, sType="UC_LessINF"))
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=6}
+#pdf(file = paste0(dataDir,"/SummaryFigures/OverlappingClonesPerRegion_UC_LessINF.pdf"), width = 20, height = 10)
+plot_grid(plotlist = plotList, ncol = 4)
+#dev.off()
+```
+
+
+```{r}
+plotList <- list()
+for(donorID in c("Healthy1", "Healthy2", "Healthy3", "Healthy4" )){
+  plotList <- lappend(plotList, plotClonalForest2(donorID))
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=4}
+pdf(file = paste0(dataDir,"/SummaryFigures/OverlappingClonesPerRegion_Healthy.pdf"), width = 18, height = 6)
+plot_grid(plotlist = plotList, ncol = 2)
+dev.off()
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=4}
+plotList <- list()
+for(donorID in c("UC4", "UC9", "UC14","UC19" )){
+  plotList <- lappend(plotList, plotClonalForest2(donorID))
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=4}
+pdf(file = paste0(dataDir,"/SummaryFigures/OverlappingClonesPerRegion_NonInflamed.pdf"), width = 9, height = 18)
+plot_grid(plotlist = plotList, ncol = 2)
+dev.off()
+```
+

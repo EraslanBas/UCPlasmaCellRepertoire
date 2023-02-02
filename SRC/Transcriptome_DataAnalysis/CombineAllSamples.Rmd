@@ -1,0 +1,937 @@
+---
+title: "Combine All Samples"
+output:
+  html_document:
+  df_print: paged
+---
+  
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(gtools)
+library(RColorBrewer)
+#library(calibrate)
+#library('sva')
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+#library(liger)
+
+
+options(future.globals.maxSize= 10^10)
+geneExpressionGroups= list("Healthy"=c("Healthy_Healthy1","Healthy_Healthy2","Healthy_Healthy3", 
+                                       "Healthy_Healthy4", "Healthy_Healthy5", "Healthy_Healthy7",
+                                       "Healthy_Healthy8", "Healthy_Healthy9"),
+                           "UC_NonINF"= c("UC_NonINF_UC4","UC_NonINF_UC9","UC_NonINF_UC14",
+                                          "UC_NonINF_UC19","UC_NonINF_UC23"),
+                           "UC_LessINF"=c("UC_LessINF_UC3","UC_LessINF_UC10","UC_LessINF_UC15","UC_LessINF_UC16",
+                                          "UC_LessINF_UC17","UC_LessINF_UC18", "UC_LessINF_UC20"),
+                            "UC_INF"=c("UC_INF_UC3","UC_INF_UC10","UC_INF_UC15","UC_INF_UC16",
+                                       "UC_INF_UC17","UC_INF_UC18", "UC_INF_UC20", "UC_INF_UC22"))
+
+```
+
+Combine all samples into one seurat object:
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+  #donorObjects <-readRDS(paste0(dataDir, "/RDSFiles/donorObjectsSelectedCells.rds"))
+  sampleTypeObjects <- list()
+
+
+  fTemp = data.frame()
+
+
+  print(samples[1,"SampleNames"])
+  allMatrix <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", samples[1,"SampleNames"]))
+  colnames(allMatrix) <- sapply(colnames(allMatrix), function(x){strsplit(x,"-")[[1]][1]})
+  colnames(allMatrix) <- paste0(colnames(allMatrix), "_", samples[1,"SampleIdentifier"])
+  cellB <- unique(colnames(allMatrix))
+
+  vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",samples[1,"SampleNames"],"/filtered_contig_annotations.csv"),
+                       stringsAsFactors = F)
+  vdjCellB <- unique(colnames(allMatrix))
+  vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+  vdjCellB <- paste0(vdjCellB,  "_", samples[1,"SampleIdentifier"])
+  cellB <- cellB[cellB %in% vdjCellB]
+
+  #dObject <- donorObjects[[as.character(samples[1,"DonorID"])]]
+  #cellB <- cellB[cellB %in% colnames(dObject@assays$RNA)]
+  allMatrix <- allMatrix[,cellB]
+
+
+  metaDF <- data.frame(sampleName=rep(as.character(samples[1,"SampleNames"]),ncol(allMatrix)),
+                       position = rep(as.character(samples[1,"Position"]),ncol(allMatrix)),
+                       donorID=rep(as.character(samples[1,"DonorID"]),ncol(allMatrix)),
+                       stim=rep(as.character(samples[1,"SampleAttributes"]),ncol(allMatrix)),
+                       replicates=rep(as.character(samples[1,"Replicates"]),ncol(allMatrix)),
+                       lane=rep(as.character(samples[1,"Lane"]),ncol(allMatrix)),
+                       stringsAsFactors = F)
+
+  if(length(samples$SampleNames) > 1){
+    for(i in 2:length(samples$SampleNames)){
+      print(samples[i,"SampleNames"])
+      k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", samples[i,"SampleNames"]))
+      colnames(k) <- sapply(colnames(k), function(x){strsplit(x,"-")[[1]][1]})
+      colnames(k) <- paste0(colnames(k), "_", samples[i,"SampleIdentifier"])
+
+      vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",samples[i,"SampleNames"],"/filtered_contig_annotations.csv"),
+                           stringsAsFactors = F)
+      cellB <- unique(colnames(k))
+      vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+      vdjCellB <- paste0(vdjCellB,  "_", samples[i,"SampleIdentifier"])
+      cellB <- cellB[cellB %in% vdjCellB]
+
+      #if(samples[i,"DonorID"] %in% names(donorObjects)){
+      #     dObject <- donorObjects[[as.character(samples[i,"DonorID"])]]
+      #     cellB <- cellB[cellB %in% colnames(dObject@assays$RNA)]
+      #}
+
+      k <- k[,cellB]
+
+
+      allMatrix <- cbind(allMatrix, k)
+
+      tmpmetaDF <- data.frame(sampleName=rep(as.character(samples[i,"SampleNames"]),ncol(k)),
+                              position = rep(as.character(samples[i,"Position"]),ncol(k)),
+                              donorID=rep(as.character(samples[i,"DonorID"]),ncol(k)),
+                              stim=rep(as.character(samples[i,"SampleAttributes"]),ncol(k)),
+                              replicates=rep(as.character(samples[i,"Replicates"]),ncol(k)),
+                              lane=rep(as.character(samples[i,"Lane"]),ncol(k)),
+                              stringsAsFactors = F)
+
+      metaDF <- rbind(metaDF, tmpmetaDF)
+    }}
+
+```
+
+```{r}
+  # serObj <- CreateSeuratObject(counts = allMatrix, project = "AllSamples", min.features=500, min.cells = 500)
+  # 
+  # rownames(metaDF) <- colnames(allMatrix)
+  # 
+  # metaDF <- metaDF[colnames(serObj@assays$RNA),]
+  # 
+  # x <- metaDF$sampleName
+  # names(x) <- rownames(metaDF)
+  # serObj$sampleName <-x
+  # 
+  # x <- metaDF$position
+  # names(x) <- rownames(metaDF)
+  # serObj$position <- x
+  # 
+  # x <- metaDF$stim
+  # names(x) <- rownames(metaDF)
+  # serObj$stim <- x
+  # 
+  # x <- metaDF$replicates
+  # names(x) <- rownames(metaDF)
+  # serObj$replicates <- x
+  # 
+  # x <- metaDF$lane
+  # names(x) <- rownames(metaDF)
+  # serObj$lane <- x
+  # 
+  # x <- metaDF$donorID
+  # names(x) <- rownames(metaDF)
+  # serObj$donorID <- x
+  # 
+  # #serObj$donorLane <- paste0(serObj$donorID,"_",serObj$lane)
+  # 
+  # serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+  # 
+  # allGenes <- rownames(serObj@assays$RNA)
+  # mtGenes <- allGenes[grep("^MT-", rownames(serObj@assays$RNA))]
+  # otherGenes <- allGenes[allGenes %ni% c(mtGenes, IgGenes)]
+  # serObj <- subset(x=serObj, features = otherGenes)
+  # 
+  # saveRDS(serObj, paste0(dataDir,"/RDSFiles/BCellAllDataRaw.rds"))
+
+
+```
+
+```{r}
+  serObj <- readRDS(paste0(dataDir, "/RDSFiles/BCellAllDataRaw.rds"))
+  serObj <- subset(serObj, subset =  percent.mt < 10)
+  serObj <- subset(serObj, subset =  nCount_RNA < 13000)
+
+  cellsToDiscard <- readRDS(paste0(dataDir,"/RDSFiles/cellsToDiscard.rds"))
+  allCells <- colnames(serObj@assays$RNA)
+
+  cellsToKeep <- allCells[allCells %ni% cellsToDiscard]
+  serObj <- subset(serObj, cells=cellsToKeep)
+
+  serObj <- NormalizeData(serObj, verbose = FALSE)
+
+  # m = as.matrix(GetAssayData(serObj))
+  # com = ComBat(m, serObj$lane, prior.plots=FALSE, par.prior=TRUE)
+  # serObj@assays$RNA@data <- com
+
+  serObj <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 2000)
+
+  serObj <- ScaleData(serObj, vars.to.regress = c("lane", "donorID"))
+  serObj <- RunPCA(serObj, npcs = 100, verbose = FALSE)
+#
+# #
+# #   #serObj <- RunOptimizeALS(serObj, k = 5, lambda = 5, split.by = "donorID")
+# #   #serObj <- RunQuantileAlignSNF(serObj, split.by = "donorID")
+# # #
+# # #
+   serObj <- FindNeighbors( serObj, dims = 1:50)
+#
+   saveRDS(serObj, paste0(dataDir,"/RDSFiles/BCellAllDataNormalized_donorLaneCorrected.rds"))
+  #saveRDS(serObj, paste0(dataDir,"/RDSFiles/BCellAllDataNormalized.rds"))
+
+```
+
+```{r}
+  #serObj <- readRDS(paste0(dataDir,"/RDSFiles/BCellAllDataNormalized.rds"))
+  #serObj <- FindClusters( serObj, resolution = 0.01)
+
+  #serObj <- RunTSNE( serObj, dims = 1:50)
+  #serObj <- RunUMAP( serObj, dims = 1:50)
+
+  #s.genes <- cc.genes$s.genes
+  #g2m.genes <- cc.genes$g2m.genes
+  #serObj <- CellCycleScoring(serObj, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+ 
+  ##serObj <- RunHarmony( object = serObj, group.by.vars = "donorID", plot_convergence = TRUE)
+  #serObj <- RunUMAP(object = serObj, reduction = "harmony", dims = 1:50)
+
+  serObj <- readRDS(paste0(dataDir, "/RDSFiles/allSamplesCombined_2.rds"))
+
+
+```
+
+```{r}
+  Idents(serObj) <- serObj$seurat_clusters
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = F))
+
+```
+```{r}
+  serObj <- FindClusters( serObj, resolution = 0.024)
+  serObj$seurat_clusters[serObj$seurat_clusters == 4] = 0
+  Idents(serObj) <- serObj$seurat_clusters
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.05, label = F))
+  
+  saveRDS(serObj, paste0(dataDir,"/RDSFiles/allSamplesCombined_3.rds"))
+```
+
+```{r}
+Idents(serObj) <- serObj$Phase
+print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = F))
+
+```
+
+```{r fig.width=20, fig.height=10}
+serObj$stim <- factor(serObj$stim, levels = c("UC_INF", "UC_LessINF", "UC_NonINF", "Healthy"  ))
+Idents(serObj) <- serObj$stim
+print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = F)+theme(legend.position = "None"))
+
+DimPlot(object = serObj, reduction = "harmony", pt.size = 0.01)
+
+#saveRDS(serObj, paste0(dataDir,"/RDSFiles/BCellAllDataNormalized_harmony.rds"))
+```
+
+```{r}
+serObj$ClusterDonor <- paste0(serObj$seurat_clusters,"_",serObj$donorID)
+serObj$ClusterDonor <- factor(serObj$ClusterDonor, levels = paste0(rep(as.character(0:13), each=21),"_",levels(samples$DonorID))) 
+
+serObj$ClusterStim <- paste0(serObj$seurat_clusters,"_",serObj$stim)
+serObj$ClusterStim <- factor(serObj$ClusterStim, levels = paste0(rep(as.character(0:13), each=4),"_",c("Healthy","UC_NonINF","UC_LessINF", "UC_INF"))) 
+
+
+serObj$stimDonor <- paste0(serObj$stim,"_",serObj$donorID)
+serObj$stimDonor <- factor(serObj$stimDonor, levels = unlist(geneExpressionGroups))
+
+```
+
+
+
+```{r fig.width=10, fig.height=4}
+Idents(serObj) <- serObj$stimDonor
+objAssay <- GetAssayData(serObj)
+serObj$donorID <- factor(serObj$donorID, levels = c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22","UC4", "UC9", "UC14","UC19", "UC23","Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy7","Healthy8", "Healthy9"))
+
+tp <- data.frame(stimDonor= serObj$stimDonor, ccl3level = objAssay["CCL3",], cluster=serObj$seurat_clusters, donor=serObj$donorID)
+
+saveRDS(tp, file = paste0(dataDir, "/RDSFiles/tp.rds"))
+ggplot(tp, aes(x=stimDonor, y=ccl3level, color=stimDonor)) + 
+    #geom_violin(trim=FALSE)+
+    geom_boxplot()+
+    theme_bw()+
+    #geom_jitter(shape=16, position=position_jitter(0.3), alpha=0.5)+
+   ylab("Number of cells per clone")+
+    # scale_y_continuous(trans='log2', breaks = c(1,2,4,8,16,32,64,128), labels = c(1,2,4,8,16,32,64,128))+xlab("")+
+    # stat_summary(fun.data="mean_sdl", 
+    #              geom="crossbar", width=0.2, color="red")+
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5))+ylim(0.1,9)
+   # stat_compare_means(method="wilcox.test",
+   #                              comparisons = cList,paired=F,
+   #                              color="red",
+   #                              aes(label = ..p.signif..),  method.args = list(alternative = "greater"))
+
+
+
+```
+
+```{r fig.width=15, fig.height=12}
+  Idents(serObj) <- serObj$lane
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = T)+
+          ggtitle(paste0(unique(serObj$orig.ident))," Sample Name"))
+  
+  Idents(serObj) <- serObj$seurat_clusters
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = T, cols = c("lightblue1", "orangered",    "magenta",    "#ECC978",    "#FCD738",    "#CED843",    "#B1C968",   "darkolivegreen4" ,   "#BE93C6",    "#979EC1",   "orange",  "#C5A07A",    "#66C2A5",    "slateblue1"), label.size = 8)+
+          ggtitle(paste0(unique(serObj$orig.ident))," Sample Name"))
+  
+  
+  serObj$donorID <- factor(serObj$donorID, levels = levels(samples$DonorID))
+  
+  Idents(serObj) <- serObj$donorID
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = F))
+  
+  serObj$stim <- factor(serObj$stim, levels = c("UC_INF", "UC_LessINF", "UC_NonINF", "Healthy"  ))
+  Idents(serObj) <- serObj$stim
+  print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = F)+theme(legend.position = "None"))
+
+```
+
+
+Get the cluster marker genes and GO identifiers:
+
+```{r}
+  obj.markers <- FindAllMarkers(serObj)
+  saveRDS( obj.markers, paste0(dataDir, "/RDSFiles/allObjMarkersAllSamples_3.rds"))
+
+
+  # obj.markers <- saveRDS( obj.markers, paste0(dataDir, "/RDSFiles/allObjMarkersAllSamples_combatDonorLane.rds"))
+  # obj.markers <- readRDS(paste0(dataDir, "/RDSFiles/allObjMarkersAllSamples_combatDonorLane.rds"))
+  # obj.markers <- obj.markers[obj.markers$avg_logFC > 0, ]
+  #obj.markers <- obj.markers[obj.markers$p_val_adj < 0.1,]
+  #top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+  
+ 
+```
+
+```{r}
+  #  alldeGenes <- data.frame()
+  #  alldeGenes$gene <- alldeGenes$GeneName
+  #  alldeGenes$GeneName <- NULL
+  #  
+  #  serObj$seurat_clusters <- as.character(serObj$seurat_clusters)
+  #  Idents(serObj) <- serObj$seurat_clusters
+  #  
+  #  for(elem in 0:4){
+  #    
+  #     deMy <- FindMarkers(serObj, ident.1 = as.character(elem), verbose = FALSE,  min.pct = 0.2, logfc.threshold = 0.2, only.pos = TRUE)
+  #     deMy$cluster = elem
+  #     deMy$GeneName = rownames(deMy) 
+  #     deMy <- deMy[order(-deMy$avg_logFC),]
+  #     
+  #     alldeGenes <- rbind(alldeGenes, deMy)
+  #     
+  #   #   alldeGenesTmp <- alldeGenes[alldeGenes$cluster == elem,]
+  #   #   v <- getGOTerms( foregroundGenes=rownames(alldeGenesTmp),
+  #   #                  backgroundGenes=rownames(serObj@assays$RNA),
+  #   #                  titleStr= paste(" cluster ", elem),
+  #   #                  fileAppendStr=paste("_clusterBakalim", elem))
+  #   # titleStr= paste(" cluster ", elem)
+  #   # 
+  #   # if(!is.null(v$plotList)){
+  #   #       if(!is.null(v$plotList$GOTERM_BP_ALL) & v$plotList$GOTERM_BP_ALL != "No plot"){
+  #   #         print(v$plotList$GOTERM_BP_ALL+ ggtitle(paste0(" Biological Process    ", titleStr)))
+  #   #       }
+  #   # 
+  #   #       if(!is.null(v$plotList$GOTERM_CC_ALL) & v$plotList$GOTERM_CC_ALL != "No plot"){
+  #   #         print(v$plotList$GOTERM_CC_ALL+ ggtitle(paste0(" Cellular Component   ", titleStr)))
+  #   #       }
+  #   # 
+  #   #       if(!is.null(v$plotList$GOTERM_MF_ALL) & v$plotList$GOTERM_MF_ALL != "No plot"){
+  #   #         print(v$plotList$GOTERM_MF_ALL+ggtitle(paste0(" Metabolic Process  ", titleStr)))
+  #   #       }
+  #   #}
+  #   
+  #  }
+  #  
+  # obj.markers <- rbind(alldeGenes,obj.markers)
+  # 
+  # for(elem in c("8",  "9",  "10", "11", "12", "13")){
+  #   
+  #     obj.markersTemp <- obj.markers[obj.markers$cluster == elem,]
+  #     serObj <- AddModuleScore( object = serObj, features = list(obj.markersTemp$gene),name = paste0("MyscoreGenes_", as.character(elem)))
+  # 
+  # }
+  # 
+
+  
+  #saveRDS(obj.markers, paste0(dataDir, "/RDSFiles/alldeGenes.rds"))
+  
+ #saveRDS(serObj, paste0(dataDir, "/RDSFiles/allSamplesCombined_2.rds"))
+
+  obj.markers <- readRDS(paste0(dataDir, "/RDSFiles/alldeGenes.rds"))
+  #obj.markers <- read.csv(paste0(dataDir, "/IBD_BCell_Cluster_PositiveMarkers.csv"))
+
+```
+
+```{r fig.width=14, fig.height=6}
+
+ serObj$seurat_clusters <- factor(serObj$seurat_clusters, levels = as.character(0:13))
+ Idents(serObj) <- serObj$seurat_clusters
+ 
+ obj.markers$cluster <- factor(obj.markers$cluster , levels = as.character(0:13))
+ top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+ 
+ write.csv(obj.markers, paste0(dataDir, "/IBD_BCell_Cluster_PositiveMarkers.csv"), quote = F)
+ 
+ top5 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC)
+
+ DotPlot(serObj, assay="RNA", features = unique(unlist(top5$gene)), cols=c("lightgrey","red"),
+               dot.scale = 6,  col.min = 0, col.max = 4, dot.min=0.2, scale = T) + 
+               RotatedAxis()+ theme(axis.text.x =element_text(size=9), legend.position = "bottom")+ xlab("")+
+          ylab("Clusters")+ggtitle("Marker genes per cluster")
+ 
+```
+
+```{r fig.width=20, fig.height=10}
+  FeaturePlot(serObj, 
+              features = paste0("MyscoreGenes_", c("01", "11","21","31","41","51","61","71", "81","91","101","111","121","131")),
+              cols=c("lightyellow","lightblue","red"), ncol = 5)
+```
+
+
+
+```{r fig.width=9, fig.height=3}
+FeaturePlot(serObj, features = c("CD38", "CD27", "CD19", "CD80","CD24"), ncol = 3)
+```
+
+```{r fig.width=25, fig.height=15}
+ 
+ Idents(serObj) <- serObj$ClusterStim
+ print(DotPlot(serObj, assay="RNA", features = unique(unlist(top10$gene)), cols=c("lightgrey","red"),
+               dot.scale = 6,  col.min = 0, col.max = 4, dot.min=0.2, scale = T) + 
+               RotatedAxis()+ theme(axis.text.x =element_text(size=9), legend.position = "bottom")+ xlab("")+
+          ylab("Clusters")+ggtitle("Marker genes per cluster"))
+```
+
+
+```{r fig.width=6, fig.height=3}
+    serObj$seurat_clusters <- factor(serObj$seurat_clusters, levels = 0:(length(unique(serObj$seurat_clusters))-1))
+    serObj$donor <- serObj$donorID
+    
+    d4 <- as.data.table(table(serObj$seurat_clusters, serObj$stim))
+    d4[,cellRatio:=(N / sum(N))*100,by=V1]
+    d4 <- as.data.frame(d4)
+    d4$V1 <- factor(d4$V1, levels = sort(as.numeric(unique(d4$V1))))
+    d4$V2 <- factor(d4$V2, levels = rev(c("Healthy", "UC_NonINF", "UC_LessINF", "UC_INF")))
+    ggplot(data=d4, aes(x=V1, y=cellRatio, fill=V2)) +
+            #facet_wrap(.~V1, ncol=7)+
+            geom_bar(stat="identity", width=0.7, position=position_stack()) +
+            #scale_fill_manual(values = c("red", "gold", "turquoise", "forestgreen"))+
+            labs(fill="")+
+            theme_bw()+theme(legend.position = "top")+
+            ylab("Cell percentage (%)")+xlab("Cluster")
+    
+
+   
+```
+
+```{r fig.width=9, fig.height=10}
+    serObj$donorID <- factor(serObj$donorID, levels = levels(samples$DonorID))
+    Idents(serObj) <- serObj$donorID
+    print(DimPlot(serObj, reduction = "umap", pt.size = 0.01, label = F))
+
+    d4 <- as.data.table(table(serObj$seurat_clusters, serObj$donorID))
+    d4[,cellRatio:=(N / sum(N))*100,by=V1]
+    d4 <- as.data.frame(d4)
+    d4$V1 <- factor(d4$V1, levels = sort(as.numeric(unique(d4$V1))))
+    d4$V2 <- factor(d4$V2, levels = levels(samples$DonorID))
+    ggplot(data=d4, aes(x=V2, y=cellRatio, fill=V2)) +
+            facet_wrap(.~V1, ncol=3, scales = "free_y")+
+            geom_bar(stat="identity", width=0.7, position=position_dodge()) +
+            #scale_fill_manual(values = c("red", "gold", "turquoise", "forestgreen"))+
+            labs(fill="")+
+            theme_bw()+theme(legend.position = "top", axis.text.x  = element_text(angle=90, vjust=0.5), strip.text = element_text(size=15))+
+            ylab("Cell percentage (%)")+xlab("Donor")
+    
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=7}
+  serObj$objectUniqueChar <- serObj$stim
+  plotClusterPercentage(serObj, objectUniqueChar=unique(serObj$objectUniqueChar))
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=5}
+Idents(serObj) <- serObj$seurat_clusters
+serObj <- BuildClusterTree(object= serObj, reorder = F, reorder.numeric = F, dims = 1:50)
+PlotClusterTree(serObj)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=5, fig.height=8}
+    
+    d4 <- as.data.table(table(as.character(serObj$seurat_clusters), serObj$stimDonor))
+    d4[,cellRatio:=(N / sum(N))*100,by=V2]
+    d4 <- as.data.frame(d4)
+    d4$V1 <- factor(d4$V1, levels = 0:13)
+    d4$V2 <- factor(d4$V2, levels = unlist(geneExpressionGroups))
+    d4$donorID <- sapply(d4$V2, function(x){k <- strsplit(as.character(x),"_")[[1]]
+                                            return(k[length(k)])})
+    d4$sampleType <- sapply(d4$V2, function(x){k <- strsplit(as.character(x),"_")[[1]]
+                                            return(k[length(k)-1])})
+    
+    #d4$V2 <- factor(d4$V2, levels = c("Healthy", "UC_NonINF","UC_LessINF", "UC_INF"))
+    d4_G1 <- d4[d4$V2 %in% unlist(geneExpressionGroups[c("Healthy","UC_NonINF")]),]
+    d4_G2 <- d4[d4$V2 %in% unlist(geneExpressionGroups[c("UC_LessINF","UC_INF")]),]
+    
+    d4_G2$donorID <- factor(d4_G2$donorID, levels = c("UC3" , "UC10", "UC15", "UC16", "UC17", "UC18", "UC20", "UC22"))
+    ggplot(data=d4_G2, aes(x=V1, y=cellRatio, fill=sampleType)) +
+            facet_wrap(.~donorID, ncol=2)+
+            geom_bar(stat="identity", width=0.7, position=position_dodge()) +
+            #scale_fill_manual(values = c("darkred","darkgreen","darkblue"))+
+            theme_bw()+theme(legend.position = "top", strip.text.x = element_text(size=13),
+                             axis.text = element_text(size=10))+ylab("Cell percentage (%)")+xlab("Cluster")
+    
+    
+     
+     
+    print(ggplot(data=d4_G1, aes(x=V1, y=cellRatio, fill=sampleType)) +
+            facet_wrap(.~donorID, ncol=8)+
+            geom_bar(stat="identity", width=0.7, position=position_dodge()) +
+            scale_fill_manual(values = c("darkgrey","yellow4"))+
+            theme_bw()+theme(legend.position = "right")+ylab("Cell percentage (%)")+xlab("Cluster"))
+    
+    print(ggplot(data=d4_G2, aes(x=V1, y=cellRatio, fill=V1)) +
+            facet_wrap(.~V2, ncol=7)+
+            geom_bar(stat="identity", width=0.7, position=position_dodge()) +
+            #scale_fill_manual(values = c("darkred","darkgreen","darkblue"))+
+            theme_bw()+theme(legend.position = "None")+ylab("Cell percentage (%)")+xlab("Cluster")+
+            ggtitle("Phase"))
+    
+   
+    
+```
+
+
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=6}
+chemokines <- read.csv(paste0(dataDir, "Chemokines.csv"), stringsAsFactors = F)
+cytokines <- read.csv(paste0(dataDir, "Cytokines.csv"), stringsAsFactors = F)
+antPre <- read.csv(paste0(dataDir, "AntigenPresentationGenes.csv"), stringsAsFactors = F)
+
+
+chem = unique(chemokines$Chemokine)
+chemRep <- unique(chemokines$Receptor)
+chemRep <- chemRep[chemRep !=""]
+
+cyto <- unique(cytokines$Cytokines)
+cyto = cyto[cyto!=""]
+cytoRep <- unique(cytokines$Receptors)
+
+antPr <- unique(antPre$AntigenProcessingAndPresentation)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=10}
+serObj$donorID <- factor(serObj$donorID, levels = c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22","UC4", "UC9", "UC14","UC19", "UC23",
+                      "Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy7","Healthy8", "Healthy9"))
+
+Idents(serObj) <- serObj$donorID
+geneLists= list("Cytokines"=cyto,
+                "Cytokine Receptors" = cytoRep,
+                "Chemokines" = chem,
+                "Chemokine Receptors"= chemRep,
+                "Antigen Presentation Genes" = antPr,
+                "A4B7 Integrin Signaling" = c("ITGA4", "ITGB1", "ITGB7", "A4B7"))
+
+
+```
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=8}
+serObj$donorStim <- paste0(serObj$stim,  "_", serObj$donorID )
+serObj$donorStim <- factor(serObj$donorStim, levels = unlist(geneExpressionGroups))
+Idents(serObj) <- serObj$donorStim
+
+for(i in 1:length(geneLists)){
+  print(DotPlot(serObj, assay="RNA", features = geneLists[[i]], cols=c("navy","red"),
+                  dot.scale = 6,  col.min = 0, col.max = 2, scale = T) + 
+                  RotatedAxis()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom") +ggtitle(names(geneLists)[[i]]))
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=10}
+DotPlot(serObj, assay="RNA", features = antPr, cols = c("navy", "red"),
+                  dot.scale = 4,  col.min = 0, col.max = 2) + 
+                  RotatedAxis()+ylab(" Sample Type") + theme(legend.position = "bottom")  +ggtitle("Antigen Presentation Genes")
+```
+
+```{r fig.height=16, fig.width=24}
+    
+   serObj <- AddModuleScore( object = serObj, features = list(geneLists$Cytokines),name = "MyCytokines")
+   serObj <- AddModuleScore( object = serObj, features = list(geneLists$`Cytokine Receptors`),name = "MyCytokineReceptors")
+   serObj <- AddModuleScore( object = serObj, features = list(geneLists$Chemokines),name = "MyChemokines")
+   serObj <- AddModuleScore( object = serObj, features = list(geneLists$`Chemokine Receptors`),name = "MyChemokineReceptors")
+   serObj <- AddModuleScore( object = serObj, features = list(geneLists$`Antigen Presentation Genes`),name = "MyAntigenPresentationGenes")
+   
+   serObj_healthy <- subset(x=serObj, subset = (stim == "Healthy"))
+   serObj_NonInf <- subset(serObj, subset = (stim == "UC_NonINF"))
+   serObj_LessInf <- subset(serObj, subset = (stim == "UC_LessINF"))
+   serObj_Inf <- subset(serObj, subset = (stim == "UC_INF"))
+   
+   FeaturePlot(serObj_healthy, features = c("MyCytokines1", "MyCytokineReceptors1", "MyChemokines1", "MyChemokineReceptors1", "MyAntigenPresentationGenes1"), cols=c("lightyellow","lightblue","red"), ncol = 3)
+   FeaturePlot(serObj_NonInf, features = c("MyCytokines1", "MyCytokineReceptors1", "MyChemokines1", "MyChemokineReceptors1", "MyAntigenPresentationGenes1"), cols=c("lightyellow","lightblue","red"), ncol = 3)
+   FeaturePlot(serObj_LessInf, features = c("MyCytokines1", "MyCytokineReceptors1", "MyChemokines1", "MyChemokineReceptors1", "MyAntigenPresentationGenes1"), cols=c("lightyellow","lightblue","red"), ncol = 3)
+  FeaturePlot(serObj_Inf, features = c("MyCytokines1", "MyCytokineReceptors1", "MyChemokines1", "MyChemokineReceptors1", "MyAntigenPresentationGenes1"), cols=c("lightyellow","lightblue","red"), ncol = 3)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=5}
+serObj$donorCluster <- paste0(serObj$stim,"_",serObj$donorID,"_",serObj$seurat_clusters)
+serObj$donorCluster <- factor(serObj$donorCluster, levels = paste0(rep(unlist(geneExpressionGroups), each=14), "_",rep(0:13)))
+Idents(serObj) <- serObj$donorCluster
+
+serObj1  <- subset(serObj, cells=names(serObj$seurat_clusters[serObj$donorStim %in% geneExpressionGroups$Healthy]))
+serObj1$donorCluster <- droplevels(serObj1$donorCluster)
+serObj2  <- subset(serObj, cells=names(serObj$seurat_clusters[serObj$donorStim %in% geneExpressionGroups$UC_NonINF]))
+serObj2$donorCluster <- droplevels(serObj2$donorCluster)
+serObj3  <- subset(serObj, cells=names(serObj$seurat_clusters[serObj$donorStim %in% geneExpressionGroups$UC_LessINF]))
+serObj3$donorCluster <- droplevels(serObj3$donorCluster)
+serObj4  <- subset(serObj, cells=names(serObj$seurat_clusters[serObj$donorStim %in% geneExpressionGroups$UC_INF]))
+serObj4$donorCluster <- droplevels(serObj4$donorCluster)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=5}
+# for(i in c(serObj1, serObj2, serObj3, serObj4)){
+#   print(DotPlot(i, assay="RNA", features = cyto, cols=c("grey","red"),
+#                   dot.scale = 4,  col.min = 0, col.max = 5) + 
+#                   coord_flip()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom", 
+#                                                                         axis.text.x  = element_text(angle=90, vjust=0.5)) +ggtitle("Cytokines"))
+# }
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=8}
+# for(i in c(serObj1, serObj2, serObj3, serObj4)){
+#   print(DotPlot(i, assay="RNA", features = cytoRep, cols=c("grey","red"),
+#                   dot.scale = 4,  col.min = 1, col.max = 5, dot.min=0.2) + 
+#                   coord_flip()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom", 
+#                                                                         axis.text.x  = element_text(angle=90, vjust=0.5)) +ggtitle("Cytokine receptors"))
+# }
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=6}
+# for(i in c(serObj1, serObj2, serObj3, serObj4)){
+#   print(DotPlot(i, assay="RNA", features = chem, cols=c("grey","red"),
+#                   dot.scale = 4,  col.min = 1, col.max = 5, dot.min=0.2) + 
+#                   coord_flip()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom", 
+#                                                                         axis.text.x  = element_text(angle=90, vjust=0.5)) +ggtitle("Chemokines"))
+# }
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=5}
+
+# for(i in c(serObj1, serObj2, serObj3, serObj4)){
+#   print(DotPlot(i, assay="RNA", features = chemRep, cols=c("grey","red"),
+#                   dot.scale = 4,  col.min = 1, col.max = 5, dot.min=0.2) + 
+#                   coord_flip()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom", 
+#                                                                         axis.text.x  = element_text(angle=90, vjust=0.5)) +ggtitle("Chemokine Receptors"))
+# }
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=25, fig.height=15}
+# for(i in c(serObj1, serObj2, serObj3, serObj4)){
+#   print(DotPlot(i, assay="RNA", features = antPr, cols=c("grey","red"),
+#                   dot.scale = 4,  col.min = 1, col.max = 5, dot.min=0.2) + 
+#                   coord_flip()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom", 
+#                                                                         axis.text.x  = element_text(angle=90, vjust=0.5, size=14), 
+#                                                                        axis.text.y  = element_text( size=12)) +ggtitle("Antigen Presentation Genes"))
+# }
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=30, fig.height=20}
+# top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+# top10 <- rev(unique(top10$gene))
+# 
+# for(i in c(serObj1, serObj2, serObj3, serObj4)){
+#   print(DotPlot(i, assay="RNA", features = top10, cols=c("navy","red"),
+#                   dot.scale = 4,  col.min = 1, col.max = 5, dot.min=0.2) + 
+#                   coord_flip()+ylab(" Sample Type") + theme_bw()+theme(legend.position = "bottom", 
+#                                                                         axis.text.x  = element_text(angle=90, vjust=0.5, size=14), 
+#                                                                        axis.text.y  = element_text( size=12)) +ggtitle("Cluster marker genes"))
+# }
+
+```
+
+
+
+```{r}
+
+     #  serObj$stimCluster <- paste0(serObj$stim,"_",serObj$seurat_clusters)
+     #  serObj$stimCluster <- factor(serObj$stimCluster, levels = paste0(c("Healthy","UC_NonINF", "UC_LessINF","UC_INF"),"_",rep(levels(serObj$seurat_clusters), each=4)))
+     #  Idents(serObj) <- serObj$stimCluster
+     # DotPlot(serObj, assay="RNA", features = unique(rev(top10$gene))[1:59], cols = c("grey", "red"),
+     #              dot.scale = 6,  col.min = 2, col.max = 6, dot.min=0.2) + 
+     #              RotatedAxis()+ylab(" Clusters")
+     # 
+      # print(DimPlot(serObj, reduction = "umap", group.by = "sampleName", pt.size = 0.05)+
+      #     ggtitle(paste0(unique(serObj$orig.ident))," Sample Name"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "lane", pt.size = 0.05)+
+      #       ggtitle(paste0(unique(serObj$orig.ident)), " Lane"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "replicates", pt.size = 0.05)+
+      #         ggtitle(paste0(unique(serObj$orig.ident))," replicates"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "donorID", pt.size = 0.05)+
+      #         ggtitle(paste0(unique(serObj$orig.ident))," sample attribute"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "stim", pt.size = 0.01)+
+      #         ggtitle(paste0(unique(serObj$orig.ident))," sample attribute"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "position", pt.size = 0.05)+
+      #         ggtitle(paste0(unique(serObj$orig.ident))," position"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "position", pt.size = 0.05)+
+      #         ggtitle(paste0(unique(serObj$orig.ident))," position"))
+      # print(DimPlot(serObj, reduction = "umap", group.by = "Phase", pt.size = 0.05)+
+      #         ggtitle(paste0(unique(serObj$orig.ident))," Cell Cycle Phase"))
+      # 
+      # 
+     
+   
+  
+```
+
+
+
+
+For checking the exporession levels of specific genes:
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=5}
+# serObj$stimDonor <- paste0(serObj$stim,"_",serObj$donorID)
+# serObj$stimDonor <- factor(serObj$stimDonor, levels = unlist(geneExpressionGroups))
+# Idents(serObj) <- serObj$stimDonor
+# 
+# DotPlot(serObjk, assay="RNA", features = "GPR15", cols = c("grey", "red")) + 
+#                   RotatedAxis()+ylab(" Sample Type") 
+# serObjk <- subset(serObj, cells=names(serObj$stimDonor[serObj$stimDonor %in% unlist(geneExpressionGroups[c("Healthy","UC_LessINF","UC_INF")] )]))
+# serObjk$stimDonor <- factor(serObjk$stimDonor, levels=unlist(geneExpressionGroups[c("Healthy","UC_LessINF","UC_INF")] ))
+# FeaturePlot(serObjk, features = 'GPR15', split.by = "stimDonor", cols = c("grey", "red"))
+# 
+# VlnPlot(serObj, features = c("GPR15"), group.by = "stimDonor", 
+#     pt.size = 3, combine = FALSE, max.cutoff='q10')
+# tempDF <-  data.frame(GPR15=unlist(GetAssayData(serObjk)["GPR15",]),
+#             stimDonor=serObjk$stimDonor)
+# 
+# ggplot(tempDF, aes(x=stimDonor, y=GPR15)) + 
+#   geom_boxplot() +ylim(0,3)
+```
+
+
+
+
+
+Differential expression analysis:
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=28, fig.height=10}
+allDifExpGenes <- data.frame()
+
+Idents(serObj) <- serObj$stim
+inf.response1 <- FindMarkers(serObj, ident.1 = "UC_INF", ident.2 = "Healthy", verbose = FALSE)
+inf.response1 <- inf.response1[order(-inf.response1$avg_logFC),]
+inf.response1$gene <- rownames(inf.response1)
+inf.response1$DE_type = "UC_INF_versus_Healthy"
+allDifExpGenes <- inf.response1
+
+inf.response1_temp <- inf.response1[abs(inf.response1$avg_logFC) > 0.5,]
+
+
+serObj$donorStim <- paste0(serObj$stim,  "_", serObj$donorID )
+serObj$donorStim <- factor(serObj$donorStim, levels =unlist(geneExpressionGroups))
+Idents(serObj) <- serObj$donorStim
+
+DotPlot(serObj, assay="RNA", features = inf.response1_temp$gene, cols = c("navy", "red"),
+                  dot.scale = 6,  col.min = 0, col.max = 2) + 
+                  RotatedAxis()+ylab(" Sample Type") + ggtitle("Differentially expressed genes between UC Inflamed - Healthy")+
+  theme(legend.position = "top")
+
+
+  
+Idents(serObj) <- serObj$stim
+inf.response2 <- FindMarkers(serObj, ident.1 = "UC_INF", ident.2 = "UC_NonINF", verbose = FALSE)
+inf.response2 <- inf.response2[order(-inf.response2$avg_logFC),]
+inf.response2$gene <- rownames(inf.response2)
+inf.response2$DE_type = "UC_INF_versus_UC_NonINF"
+allDifExpGenes <- rbind(allDifExpGenes, inf.response2)
+
+Idents(serObj) <- serObj$donorStim
+inf.response2_temp <- inf.response2[abs(inf.response2$avg_logFC) > 0.5,]
+
+DotPlot(serObj, assay="RNA", features = inf.response2_temp$gene, cols = c("navy", "red"),
+                  dot.scale = 6,  col.min = 0, col.max = 2) + 
+                  RotatedAxis()+ylab(" Sample Type") + ggtitle("Differentially expressed genes between UC Inflamed - UC Non-Inflamed")+
+  theme(legend.position = "top")
+
+
+
+Idents(serObj) <- serObj$stim
+inf.response3 <- FindMarkers(serObj, ident.1 = "UC_INF", ident.2 = "UC_LessINF", verbose = FALSE)
+inf.response3 <- inf.response3[order(-inf.response3$avg_logFC),]
+inf.response3$gene <- rownames(inf.response3)
+inf.response3$DE_type = "UC_INF_versus_UC_LessINF"
+allDifExpGenes <- rbind(allDifExpGenes, inf.response3)
+
+Idents(serObj) <- serObj$donorStim
+inf.response3_temp <- inf.response3[abs(inf.response3$avg_logFC) > 0.5,]
+
+DotPlot(serObj, assay="RNA", features = inf.response3_temp$gene, cols = c("navy", "red"),
+                  dot.scale = 6,  col.min = 0, col.max = 2) + 
+                  RotatedAxis()+ylab(" Sample Type") + ggtitle("Differentially expressed genes between UC Inflamed - UC Less-Inflamed")+
+  theme(legend.position = "top")
+
+
+Idents(serObj) <- serObj$stim
+inf.response4 <- FindMarkers(serObj, ident.1 = "UC_NonINF", ident.2 = "Healthy", verbose = FALSE)
+inf.response4 <- inf.response4[order(-inf.response4$avg_logFC),]
+inf.response4$gene <- rownames(inf.response4)
+inf.response4$DE_type = "UC_NonINF_versus_Healthy"
+allDifExpGenes <- rbind(allDifExpGenes, inf.response4)
+
+Idents(serObj) <- serObj$donorStim
+inf.response4_temp <- inf.response4[abs(inf.response4$avg_logFC) > 0.5,]
+DotPlot(serObj, assay="RNA", features = inf.response4_temp$gene, cols = c("navy", "red"),
+                  dot.scale = 6,  col.min = 0, col.max = 2) + 
+                  RotatedAxis()+ylab(" Sample Type") + ggtitle("Differentially expressed genes between UC Non-Inflamed - Healthy")+
+  theme(legend.position = "top")
+
+allDifExpGenes <- allDifExpGenes[,c("gene", "DE_type", "avg_logFC")]
+
+write.csv(allDifExpGenes, file = paste0(dataDir,"/DifferentiallyExpressedGenesBasedOnInfStatus.csv"), quote = FALSE, row.names = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=30, fig.height=10}
+allGenes <- c()
+for(elem in c("UC3","UC10","UC15","UC16","UC17","UC18","UC20")){
+  tempC <- names(serObj$donorID[serObj$donorID == elem])
+  serObjTemp <- subset(serObj, cells=tempC)
+  Idents(serObjTemp) <- serObjTemp$stim
+  inf.response3 <- FindMarkers(serObjTemp, ident.1 = "UC_INF", ident.2 = "UC_LessINF", verbose = FALSE, only.pos = F)
+  inf.response3 <- inf.response3[abs(inf.response3$avg_logFC)>0.8,]
+  inf.response3 <- inf.response3[order(inf.response3$avg_logFC),]
+  allGenes <- c(allGenes, rownames(inf.response3))
+  # DotPlot(serObjTemp, assay="RNA", features = rownames(inf.response3), cols = c("grey", "red"),
+  #                 dot.scale = 6,  col.min = 2, col.max = 6, dot.min=0.2) + 
+  #                 RotatedAxis()+ylab(" Sample Type") + ggtitle(paste0(elem, " differentially expressed genes between UC Inflamed - UC Less-Inflamed"))
+  # # serObjTemp$stimCluster <- paste0(serObjTemp$stim,"_",serObjTemp$seurat_clusters)
+  # serObjTemp$stimCluster <- factor(serObjTemp$stimCluster, levels = paste0(c("UC_INF", "UC_LessINF"),"_",rep(levels(serObjTemp$seurat_clusters), each=2)))
+  # Idents(serObjTemp) <- serObjTemp$stimCluster
+  # DotPlot(serObjTemp, assay="RNA", features = rownames(inf.response3), cols = c("grey", "red"),
+  #                 dot.scale = 6,  col.min = 2, col.max = 6, dot.min=0.2) + 
+  #                 RotatedAxis()+ylab(" Sample Type") + ggtitle(paste0(elem," differentially expressed genes between UC Inflamed - UC Less-Inflamed"))
+
+}
+
+tempC <- names(serObj$donorID[serObj$donorID %in%  c("UC3","UC10","UC15","UC16","UC17","UC18", "UC20","UC22")])
+serObjTemp <- subset(serObj, cells=tempC)
+serObjTemp$donorStim <- paste0(serObjTemp$stim,  "_", serObjTemp$donorID )
+serObjTemp$donorStim <- factor(serObjTemp$donorStim, levels =
+                                 c("UC_LessINF_UC3","UC_LessINF_UC10","UC_LessINF_UC15","UC_LessINF_UC16",
+                                   "UC_LessINF_UC17","UC_LessINF_UC18","UC_LessINF_UC20",
+                                   "UC_INF_UC3","UC_INF_UC10","UC_INF_UC15","UC_INF_UC16",
+                                   "UC_INF_UC17","UC_INF_UC18","UC_INF_UC20","UC_INF_UC22"))
+
+Idents(serObjTemp) <- serObjTemp$donorStim
+DotPlot(serObjTemp, assay="RNA", features = unique(allGenes), cols = c("navy", "red"),
+                 dot.scale = 6,  col.min = 0, col.max = 2) + 
+                 RotatedAxis()+ylab(" Sample Type") + 
+  ggtitle(paste0("Differentially expressed genes between UC Inflamed - UC Less-Inflamed"))+
+  theme(legend.position = "top")
+
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=30, fig.height=10}
+serObj$stimCluster <- paste0(serObj$stim,"_",serObj$seurat_clusters)
+serObj$stimCluster <- factor(serObj$stimCluster, levels = paste0(unique(serObj$stim), "_", rep(sort(unique(serObj$seurat_clusters)), each=4 )))
+Idents(serObj) <- serObj$stimCluster
+
+
+deGenesPerCluster <- data.frame()
+
+for(i in c(0,2,3,4,7,8,12)){
+  c0Cells <- subset(serObj, cells=names(serObj$seurat_clusters[serObj$seurat_clusters == i]))
+  
+  inf.response_C <- FindMarkers(c0Cells, ident.1 = paste0("UC_INF_",i), ident.2 = paste0("Healthy_",i), verbose = FALSE)
+  inf.response_C <- inf.response_C[(inf.response_C$p_val_adj < 0.05 & abs(inf.response_C$avg_logFC) > 0.5),]
+  inf.response_C <- inf.response_C[order(-inf.response_C$avg_logFC),]
+  inf.response_C$Cluster = i
+  deGenesPerCluster = rbind(deGenesPerCluster,inf.response_C)
+  
+  c0Cells$donorCluster <- paste0(c0Cells$stim,"_",c0Cells$donorID,"_",c0Cells$seurat_clusters)
+  c0Cells$donorCluster <- factor(c0Cells$donorCluster, levels = paste0(unlist(geneExpressionGroups), "_",
+                                                                     rep(sort(unique(c0Cells$seurat_clusters)), each=28 )))
+  Idents(c0Cells) <- c0Cells$donorCluster
+
+  print(DotPlot(c0Cells, assay="RNA", features = rownames(inf.response_C), cols = c("lightgrey", "red"),
+                  dot.scale = 6,  col.min = 0, col.max = 2) + 
+                  RotatedAxis()+ylab(" Sample Type") +theme(legend.position = "bottom") + 
+          ggtitle(paste0("Differentially expressed genes between UC Inflamed - Healthy in cluster", i)))
+
+}
+
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=10}
+  Idents(serObj) <- serObj$stim
+  obj.markers2 <- FindAllMarkers(serObj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+  obj.markers2 <- obj.markers2[obj.markers2$p_val_adj < 0.1,]
+  saveRDS( obj.markers2, paste0(dataDir, "/RDSFiles/allObjMarkersAllSamples_combatDonorLaneSTIM.rds"))
+  obj.markers2 <- readRDS(paste0(dataDir, "/RDSFiles/allObjMarkersAllSamples_combatDonorLaneSTIM.rds"))
+ 
+  top10 <- obj.markers2  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+  serObj$donorStim <- paste0(serObj$stim,  "_", serObj$donorID )
+  serObj$donorStim <- factor(serObj$donorStim, levels = unlist(geneExpressionGroups))
+  Idents(serObj) <- serObj$donorStim
+  DotPlot(serObj, assay="RNA", features = unique(rev(top10$gene)), cols = c("grey", "red"),
+                  dot.scale = 6,  col.min = 1, col.max = 5, dot.min=0.2) + 
+                  RotatedAxis()+ylab(" Clusters")
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=5, fig.height=5}
+Idents(serObj) <- serObj$seurat_clusters
+for(elem in c("Healthy1","Healthy2","Healthy3","Healthy4","UC4","UC9","UC14","UC19","UC3","UC10","UC15","UC16","UC17","UC18","UC20")){
+  mm <- names(serObj$donorID[serObj$donorID == elem])
+  serObjUCX <- subset(serObj, cells=mm)
+  #serObjUCX$stim <- factor(serObjUCX$stim, levels = c("UC_INF","UC_LessINF"))
+  #Idents(serObjUCX) <- serObjUCX$stim
+  print(DimPlot(serObjUCX, reduction = "umap", pt.size = 0.005, label = F)+
+          ggtitle(elem))
+  serObjUCX$objectUniqueChar <- elem
+  plotClusterPercentage(serObjUCX, objectUniqueChar=unique(serObjUCX$objectUniqueChar))
+
+  
+}
+```
+
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=10}
+# for(i in 1:length(sampleTypeObjects)){
+#     serObj <- sampleTypeObjects[[i]]
+#     print(paste0("############################   ",unique(serObj$orig.ident), "   ###########################"))
+#   for(k in 1:length(rdsysM)){
+# 
+#         if(any(rdsysM[[k]] %in% rownames(serObj@assays$RNA))){
+#           print(paste0(names(rdsysM)[k]," markers"))
+#           print(FeaturePlot(serObj, features = rdsysM[[k]], min.cutoff = "q9", ncol = 3))
+#         }else{
+#           print(paste0("None of the", names(rdsysM)[k]," markers are expressed"))
+# 
+#     }
+#    }
+# }
+```

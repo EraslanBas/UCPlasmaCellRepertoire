@@ -1,0 +1,56 @@
+---
+title: "Checking Light Chain Similarity of Clonally Related Cells"
+output: html_notebook
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=8}
+
+allClones <- data.frame()
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC4", "UC9", "UC14", "Healthy1", "Healthy2", "Healthy3")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones)
+  inClones <- inClones[,c("CLONE", "V_CALL_LIGHT", "J_CALL_LIGHT")]
+  inClones$V_CALL_LIGHT <- sapply(inClones$V_CALL_LIGHT, function(x){
+    k <- strsplit(x,",")
+    return(paste(unlist(unique(sapply(k, function(y){ subseq(y,1,5)}))), collapse = ","))
+  })
+  
+  inClones$J_CALL_LIGHT <- sapply(inClones$J_CALL_LIGHT, function(x){
+    k <- strsplit(x,",")
+    return(paste(unlist(unique(sapply(k, function(y){ subseq(y,1,5)}))), collapse = ","))
+  })
+  
+  inClones <- unique(inClones)
+  
+  inClones <- as.data.table(inClones)
+
+  inClones[,V_genes:=length(unique(V_CALL_LIGHT)),by=CLONE]
+  inClones[,J_genes:=length(unique(J_CALL_LIGHT)),by=CLONE]
+  inClones <- inClones[inClones$V_genes>1 | inClones$J_genes>1,]
+  inClones$DONOR <- elem
+  inClones <- as.data.frame(inClones)
+  inClones <- inClones[,c("DONOR", "CLONE", "V_CALL_LIGHT", "J_CALL_LIGHT", "V_genes","J_genes")]
+  
+  allClones <- rbind(allClones, inClones)
+}
+```
+
+```{r}
+ write.xlsx2(allClones, file=paste0(dataDir,"/Subjects/ClonesWithMoreThanOneLightChainGene.xls"), sheetName = "Clones",
+              col.names = TRUE, row.names = FALSE, append = FALSE)
+```
+

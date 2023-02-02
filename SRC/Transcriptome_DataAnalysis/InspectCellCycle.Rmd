@@ -1,0 +1,58 @@
+---
+title: "Inspect cell cycles of B cells"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+set.seed(42)
+library(knitr)
+library(cowplot)
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(RColorBrewer)
+
+#reticulate::use_python("/anaconda3/bin/python", required = T)
+rownames(samples) <- samples$SampleNames
+samps <-  readRDS(paste0(dataDir, "/RDSFiles/allSamplesReplicatesMerged.rds"))
+samps <- samps[1:16]
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=8, fig.width=15}
+
+for(i in 1:length(samps)){
+  serObj <- samps[[i]]
+  serObj <- serObj[rownames(serObj[["RNA"]]) %ni% IgGenes,]
+  serObj <- ScaleData(serObj, verbose = FALSE)
+  serObj <- RunPCA(serObj, npcs = 50, verbose = FALSE)
+ 
+  serObj <- CellCycleScoring(serObj, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+  print(RidgePlot(serObj, features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2))
+  
+  serObj <- FindNeighbors( serObj, dims = 1:50)
+  serObj <- FindClusters( serObj, resolution = 0.3)
+  serObj <- RunTSNE( serObj, dims = 1:50)
+  print(DimPlot(serObj, reduction = "tsne")+ggtitle(unique(serObj$orig.ident)))
+  print(DimPlot(serObj, reduction = "tsne", group.by = "Phase")+ggtitle(unique(serObj$orig.ident)))
+      
+  
+  allCellNames <- colnames(serObj@assays$RNA)
+  sampleIdentifier <- sapply(allCellNames, function(x){strsplit(x,"_")[[1]][2]})
+  serObj$sampleName <- sampleIdentifier
+   
+  if(length(unique(serObj$seurat_clusters)) > 1){
+     obj.markers <- FindAllMarkers(serObj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+     obj.markers <- obj.markers[obj.markers$p_val_adj < 0.1,]
+     top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+   
+     print(DoHeatmap(serObj, features = top10$gene) + theme(axis.text.y =element_text(size=10)))
+   }
+}
+
+```
+

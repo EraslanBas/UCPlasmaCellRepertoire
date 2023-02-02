@@ -1,0 +1,43 @@
+---
+title: "Figures 2A, 2B"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+
+```{r}
+allContigsCombined = combineAllClones(minNumCells=0)
+allContigsCombined <- allContigsCombined[allContigsCombined$SAMPLETYPE %in% c("UC_LessINF"),]
+allContigsCombined <- allContigsCombined[allContigsCombined$C_CALL_General != "IGHD",]
+
+
+ggplot(allContigsCombined, aes(x=NumberOfClonalCells, color=C_CALL_General)) +
+  geom_histogram(fill="white",position="dodge", binwidth = 10)
+  
+boxplot(allContigsCombined$NumberOfClonalCells ~ allContigsCombined$C_CALL_General)
+
+x = allContigsCombined[allContigsCombined$C_CALL_General == "IGHA", "NumberOfClonalCells"]
+y = allContigsCombined[allContigsCombined$C_CALL_General == "IGHG", "NumberOfClonalCells"]
+
+
+ks.test(x,y)
+
+
+
+ggplot(allContigsCombined, aes(x = C_CALL_General, y = NumberOfClonalCells)) +
+  geom_violin(scale="width",adjust = 1,width = 0.5,fill = "grey80") + 
+  geom_boxplot(width=0.075,fatten = 3) +
+  theme_bw() + xlab("Data") + ylab("Density") + 
+  theme(axis.text.x = element_text(size = 14), axis.text.y = element_text(size = 14)) +
+  stat_summary(fun.y = mean, colour = c("red","blue", "green"), geom="point", shape=18, size=4) +
+  scale_x_discrete(labels = c("Population 1", "Population 2"))
+```
+

@@ -1,0 +1,63 @@
+---
+title: "Analyze Mutational Load"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+library(seqinr)  
+library(msa)
+library(ape)
+library(alakazam)
+library(shazam)
+library(dplyr)
+library(ggplot2)
+
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+mySampleNames = c("UC10NoninfA", "UC10InfA")
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=6}
+for(sampleName in mySampleNames){
+    allContigs <- read.csv(paste0(dataDir,"/VDJ_Files/",sampleName,"/filtered_contig_annotations.csv"), stringsAsFactors = F)
+    
+    heavyFunctionalContigs <- read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/heavyFunctional_parse-select.tab"),sep="\t", header=TRUE, stringsAsFactors = F)
+    heavyFunctionalContigs <- as.data.table(heavyFunctionalContigs)
+    heavyFunctionalContigs <- heavyFunctionalContigs[heavyFunctionalContigs[,.I[which.max(UMICOUNT)] ,by=CELL]$V1]
+    heavyFunctionalContigs$C_CALL_General <- sapply(heavyFunctionalContigs$C_CALL, function(x){substr(as.character(x),1,4)})
+    
+    lightFunctionalContigs <- read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/lightFunctional_parse-select.tab"),sep="\t", header=TRUE, stringsAsFactors = F)
+    nonFunctionalContigs <- read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/filtered_contig_igblast_db-pass_FUNCTIONAL-F.tab"),sep="\t", header=TRUE, stringsAsFactors = F)
+
+    
+    db_obs <- observedMutations(heavyFunctionalContigs, sequenceColumn="SEQUENCE_IMGT",
+                            germlineColumn="GERMLINE_IMGT",
+                            regionDefinition=IMGT_V_BY_REGIONS,
+                            frequency=TRUE, 
+                            nproc=1)
+    db_obs <- db_obs[db_obs$C_CALL_General %in% c("IGHA","IGHG","IHGM"),]
+    db_obs$C_CALL_General <- NULL
+    
+    muCols <- grep("MU_FREQ|C_CALL", colnames(db_obs))
+    db_obsPlot <- melt(db_obs[,muCols], id.vars = "C_CALL")
+    db_obsPlot$variable <- sapply(db_obsPlot$variable, function(x){strsplit(as.character(x),"MU_FREQ_")[[1]][2]})
+    db_obsPlot$region <- sapply(db_obsPlot$variable, function(x){strsplit(x,"_")[[1]][1]})
+    db_obsPlot$mutationType <- sapply(db_obsPlot$variable, function(x){strsplit(x,"_")[[1]][2]})
+    g1 <- ggplot(db_obsPlot, aes(x=region, y=value, fill=mutationType)) +
+      facet_wrap(.~C_CALL, scales = "free_x")+
+    theme_bw() + ggtitle(paste0(sampleName, "V segment mutations")) +
+    xlab("Isotype") + ylab("Mutation frequency") +
+    geom_boxplot()
+    plot(g1)
+}
+```

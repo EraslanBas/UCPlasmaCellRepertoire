@@ -1,0 +1,127 @@
+---
+title: "Summarized Repertoire Analysis 2"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  df=data.frame( sampleNames=samples$SampleNames,
+                 sampleAttributes=samples$SampleAttributesPrint,
+                 donorID=samples$DonorID,
+                 CanonicalSampleName = samples$CanonicalSampleName,
+                 stringsAsFactors = F)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=8}
+plotAAChemicalScatterPlot <- function(contigs, xA, yA, YLStr){
+   
+   contigs <- contigs[contigs$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+   contigs$SAMPLETYPEPRINT <- factor(contigs$SAMPLETYPEPRINT,
+                                levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+   contigs$donorClone <- paste0(contigs$donorID,"_",contigs$CLONE, "_", contigs$sampleType)
+   
+   contigs <- data.table(contigs)
+   expr <- parse(text = paste0("medianYA := median(", eval(yA),")"))
+   
+   contigs[,eval(expr),by=donorClone]
+   contigs <- data.frame(contigs)
+   
+   
+   #contigs$NumberOfClonalCells <- factor(contigs$NumberOfClonalCells, levels=sort(unique(contigs$NumberOfClonalCells)))
+   p <- ggscatter(contigs, x = "NumberOfClonalCells",
+             y = "medianYA",
+          size = 0.8, alpha=0.5, color="blue")+
+          facet_grid(SAMPLETYPEPRINT~C_CALL_General)+
+     xlab("Number of clonal cells")+ylab(YLStr)+
+     scale_fill_brewer(palette = "Accent")+
+     #geom_smooth()+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+     #geom_vline(xintercept = 15, color="red")+
+      xlim(0,200)+stat_cor(method = "spearman", color="red")
+   print(p)
+   
+   return(p)
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+allClones = combineAllClones()
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=15, fig.height=10}
+
+aaProbsAll <- data.frame()
+
+for( elem in c("UC_INF", "UC_LessINF", "UC_NonINF", "Healthy")){
+    allContigs <- allClones[allClones$SAMPLETYPE == elem,]
+
+    aaProbs <- aminoAcidProperties(allContigs, seq="JUNCTION", nt=TRUE, trim=TRUE, label="CDR3")
+    aaProbs$JUNCTION_aa <-  sapply(aaProbs$JUNCTION,
+                               function(x){paste(translate( s2c(x)), collapse = "")})
+
+
+    aaProbs$CDR3_posChargeNo <- sapply(aaProbs$JUNCTION, function(x){ 
+                                        k <- translate(s2c(x))
+                                        return(length(which(charge(k[2:(length(k)-1)] ) > 0)) )
+                                        } )
+    aaProbs$sampleType <- elem
+    aaProbsAll <- rbind(aaProbsAll, aaProbs)
+  
+}
+
+  
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=4}
+ 
+ aaProbsAll$isCellClonal = "NotCl" 
+ aaProbsAll[aaProbsAll$NumberOfClonalCells > 15, "isCellClonal"] = "Cl"
+ 
+ plotAAChemicalScatterPlot(contigs=aaProbsAll,
+                        yA="CDR3_aa_length",
+                        YLStr="CDR3 AA Length")
+  
+
+plotAAChemicalScatterPlot(aaProbsAll,
+                        yA="CDR3_aa_charge",
+                        YLStr="CDR3 AA Charge")
+  
+
+plotAAChemicalScatterPlot(aaProbsAll,
+                        yA="CDR3_aa_gravy",
+                        YLStr="CDR3 AA Hydrophobicity")
+  
+
+   
+plotAAChemicalScatterPlot(aaProbsAll,
+                        yA="CDR3_aa_basic",
+                        YLStr="CDR3 Basic Residues") 
+  
+   
+plotAAChemicalScatterPlot(aaProbsAll,
+                        yA="CDR3_aa_polarity",
+                        YLStr="CDR3 Polarity") 
+  
+  
+plotAAChemicalScatterPlot(aaProbsAll,
+                        yA="CDR3_aa_acidic",
+                        YLStr="CDR3 Acidic Residues") 
+
+```
+

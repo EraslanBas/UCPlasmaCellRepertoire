@@ -1,0 +1,57 @@
+---
+title: "Donor clonal lineage trees"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("scatterplot3d")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=10}
+#c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22","UC4", "UC9", "UC14", "UC19","UC23","Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy7", "Healthy8", "Healthy9")
+
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")){
+
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  inClones <- inClones[inClones$NumberOfClonalCells > 9,]
+  
+  inClones <- data.table(inClones)
+
+  inClones[,USType := length(unique(SAMPLETYPE)),by=CLONE]
+  inClones <- data.frame(inClones)
+  inClones <- inClones[inClones$USType > 1,]
+  
+  #top10Clones <- unique(inClones$CLONE)[1:20]
+
+  for(cloneID in unique(inClones$CLONE) ){
+    print(cloneID)
+    sub_db <- subset(inClones, CLONE == cloneID)
+    print(table(sub_db$SAMPLETYPE))
+    print(table(sub_db$sampleRegion))
+    print(table(sub_db$C_CALL))
+    if(nrow(sub_db) > 4 ){
+      cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F, mergeWithDonorID=F, padEnd=T)
+      plotClone(clone = cloneInfo, titleStr=paste0(elem, " clone ", cloneID))
+    }
+  }
+  
+}
+```
+
+
+

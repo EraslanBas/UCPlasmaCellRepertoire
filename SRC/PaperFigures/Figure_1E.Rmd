@@ -1,0 +1,159 @@
+---
+title: "Topology Analysis Of The Lineage Trees"
+output:
+  html_document:
+    df_print: paged
+---
+
+Topology analysis of the B-cell clonal lineage trees per merged technical replicates.
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+```
+
+
+```{r}
+
+allPercentages <- data.frame()
+rowAnnotations <- c()
+
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")){
+
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  inClones <- inClones[inClones$NumberOfClonalCells > 9,]
+  
+  inClones <- data.table(inClones)
+
+  inClones[,USType := length(unique(SAMPLETYPE)),by=CLONE]
+  inClones <- data.frame(inClones)
+  inClones <- inClones[inClones$USType > 1,]
+  
+  for(cloneID in unique(inClones$CLONE)){
+    print(cloneID)
+    sub_db <- subset(inClones, CLONE == cloneID)
+    sub_db$C_CALL_General <- factor(sub_db$C_CALL_General, levels = c("IGHM", "IGHA", "IGHG"))
+    sub_db$SAMPLETYPE <- factor(sub_db$SAMPLETYPE, levels=c("UC_LessINF", "UC_INF"))
+    tmpDF <- data.frame(as.matrix(table(sub_db$SAMPLETYPE, sub_db$C_CALL_General)))
+    tmpDF$Var1 <- as.character(tmpDF$Var1)
+    tmpDF$Var2 <- as.character(tmpDF$Var2)
+    
+    k = data.frame(matrix(0,3,2))
+    rownames(k) = c("IGHM", "IGHA", "IGHG")
+    colnames(k) = c("UC_LessINF","UC_INF")
+
+    for(i in 1:nrow(tmpDF)){
+      k[tmpDF[i,"Var2"], tmpDF[i,"Var1"]] = tmpDF[i,"Freq"]
+    }
+      
+    tmpDF$FreqPerc <- round(tmpDF$Freq / sum( tmpDF$Freq), digits = 2)
+    tmpDF$Var1 <- sapply(tmpDF$Var1, function(x){strsplit(as.character(x), "_")[[1]][2]})
+    tmpDF$Var3 <- paste0(tmpDF$Var2,"_",tmpDF$Var1)
+    tmpDF <- tmpDF[order(tmpDF$Var1, tmpDF$Var2),]
+    allPercentages <- rbind(allPercentages, tmpDF$FreqPerc)
+    colnames(allPercentages) <- tmpDF$Var3
+    rowAnnotations <- c(rowAnnotations, elem)
+  }
+  
+}
+
+allPercentages <- allPercentages * 100
+```
+
+```{r}
+infMax = c()
+for ( i in 1:nrow(allPercentages)){
+  infMax = c(infMax, which.max(allPercentages[i,1:3]))
+}
+
+nInF_IGG =length(which(infMax == 2))
+nInF_IGA =length(which(infMax == 1))
+
+
+lessinfMax = c()
+for ( i in 1:nrow(allPercentages)){
+  lessinfMax = c(lessinfMax, which.max(allPercentages[i,4:6]))
+}
+
+nlessInF_IGG =length(which(lessinfMax == 2))
+nlessInF_IGA =length(which(lessinfMax == 1))
+```
+
+```{r fig.width=2, fig.height=2}
+allPercentages$IGHGoverIGHA_INF = allPercentages$IGHG_INF - allPercentages$IGHA_INF 
+allPercentages$IGHGoverIGHA_LessINF = allPercentages$IGHG_LessINF - allPercentages$IGHA_LessINF 
+
+
+allPercentages$IGHMoverIGHA_INF = allPercentages$IGHM_INF - allPercentages$IGHA_INF 
+allPercentages$IGHMoverIGHA_LessINF = allPercentages$IGHM_LessINF - allPercentages$IGHA_LessINF 
+
+
+
+ggplot(allPercentages, aes(y= IGHGoverIGHA_INF, x= IGHGoverIGHA_LessINF )) +
+          geom_point()+theme_bw()+geom_abline(intercept = 0,slope = 1)+
+  stat_cor(method = "pearson", color="black", label.x.npc="left")+xlim(-100,100)+ylim(-100,100)+
+  ylab("IGHG versus IGHA percentage difference \n in less-inflamed samples")+
+  xlab("IGHG versus IGHA percentage difference \n in inflamed samples")
+  
+
+ggplot(allPercentages, aes(y= IGHMoverIGHA_INF, x= IGHMoverIGHA_LessINF )) +
+          geom_point()+theme_bw()+geom_abline(intercept = 0,slope = 1)+
+  stat_cor(method = "pearson", color="black", label.x.npc="left")+xlim(-100,100)+ylim(-100,100)+
+  ylab("IGHM versus IGHA percentage difference \n in less-inflamed samples")+
+  xlab("IGHM versus IGHA percentage difference \n in inflamed samples")
+
+```
+
+```{r fig.width=2, fig.height=3}
+
+
+annotRow = data.frame(Donors=rowAnnotations)
+ann_colors = list(
+    Donors = c("UC3"="springgreen3", "UC10"="firebrick", "UC15"="#7570B3", "UC16"="#E7298A",
+                 "UC17"="#66A61E", "UC18"="navy", "UC20"="#D95F02"),
+    SampleType = c("Inflamed"='#F8766D',"Less-Inflamed"='#72B000')
+)
+
+
+ann_colors_col = list(
+    Donors = c("UC3"="springgreen3", "UC10"="firebrick", "UC15"="#7570B3", "UC16"="#E7298A",
+                 "UC17"="#66A61E", "UC18"="navy", "UC20"="#D95F02")
+)
+
+rownames(allPercentages) = paste("Test", 1:nrow(allPercentages), sep = "")
+rownames(annotRow) = paste("Test", 1:nrow(allPercentages), sep = "")
+
+allPercentages <- allPercentages[,c("IGHM_LessINF", "IGHM_INF", "IGHG_LessINF", "IGHG_INF", "IGHA_LessINF", "IGHA_INF") ]
+annotCol = data.frame(
+                    SampleType = factor(c(rep(c("Less-Inflamed","Inflamed"),2),
+                                        levels = c("Less-Inflamed", "Inflamed")))
+                )
+rownames(annotCol) = colnames(allPercentages)
+
+#allPercentages$DonorID = sapply(annotRow$Donors, function(x){as.integer(strsplit(as.character(x),"UC")[[1]][2])})
+
+
+```
+
+```{r fig.width=3, fig.height=3}
+pdf(file = "./PDFFigures/Fig1E.pdf", width = 6,  height = 6) 
+pheatmap.type(allPercentages,  cluster_cols = F, show_rownames = F,
+         annRow = annotRow, annotation_colors  = ann_colors, annotation_col = annotCol,
+         color=colorRampPalette(c("white", "orange", "red3"))(50))
+dev.off()
+
+pdf(file = "./PDFFigures/Fig1E_2.pdf", width = 6,  height = 6) 
+pheatmap(allPercentages,  cluster_cols = F, show_rownames = F,
+         annotation_row = annotRow, annotation_colors  = ann_colors, annotation_col = annotCol,
+         color=colorRampPalette(c("white", "orange", "red3"))(50))
+dev.off()
+```
+

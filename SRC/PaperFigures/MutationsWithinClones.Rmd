@@ -1,0 +1,252 @@
+---
+title: "Supplement Figure 2"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r}
+getMutationFreq <- function(contigs){
+    db_obsHeavy <- observedMutations(contigs,
+                                sequenceColumn="SEQUENCE_IMGT",
+                                germlineColumn="GERMLINE_IMGT",
+                                regionDefinition=IMGT_V_BY_SEGMENTS,
+                                frequency=FALSE, 
+                                nproc=1)
+   db_obsLight <- observedMutations(contigs,
+                                sequenceColumn="SEQUENCE_IMGT_LIGHT",
+                                germlineColumn="GERMLINE_IMGT_LIGHT",
+                                regionDefinition=IMGT_V_BY_SEGMENTS,
+                                frequency=FALSE, 
+                                nproc=1)
+   
+        
+   db_obsHeavy <- db_obsHeavy[,c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "mu_count_v_r", "mu_count_v_s", "SAMPLENAME","SAMPLETYPE","CLONE")]
+   db_obsLight <- db_obsLight[,c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "mu_count_v_r", "mu_count_v_s")]
+   
+   colnames(db_obsHeavy) <- c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "VH_R", "VH_S", "SAMPLENAME","SAMPLETYPE","CLONE")
+   colnames(db_obsLight) <- c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "VL_R", "VL_S")
+
+   db_obs_all <- merge(db_obsHeavy, db_obsLight, by=c("CELL", "C_CALL_General", "C_CALL_LIGHT_General"))
+   
+   
+   db_obs_all$V_heavy <- db_obs_all$VH_R + db_obs_all$VH_S
+   db_obs_all$V_light <- db_obs_all$VL_R + db_obs_all$VL_S
+   
+   db_obs_all$selectionPres_VH <- (db_obs_all$VH_R/ db_obs_all$V_heavy)
+   db_obs_all$selectionPres_VL <- (db_obs_all$VL_R/ db_obs_all$V_light)
+   
+   
+  
+   return(db_obs_all)
+}
+```
+
+
+
+```{r}
+mutationsAll <- data.frame()
+
+for( elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")){
+    
+      allContigs <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+      allContigs <- allContigs[allContigs$C_CALL != "",]
+      allContigs$C_CALL_General <- sapply(allContigs$C_CALL, function(x){substr(x,1,4)})
+      allContigs$C_CALL_LIGHT_General <- sapply(allContigs$C_CALL_LIGHT, function(x){substr(x,1,3)})
+      allContigs <- allContigs[allContigs$C_CALL_LIGHT_General %in% c("IGL", "IGK"),]
+      allContigs <- allContigs[allContigs$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+
+      k <- getMutationFreq(contigs = allContigs)
+      k$Donor = elem
+      mutationsAll <- rbind(mutationsAll, k)
+    
+}
+
+ mutationsAll$DonorClone <- paste0(mutationsAll$Donor,"_",mutationsAll$CLONE)
+ saveRDS(mutationsAll, paste0(dataDir, "/RDSFiles/mutationsAllClones.rds"))
+```
+
+```{r}
+allMeanVals <- data.frame()
+
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")){
+
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 10)
+  
+  inClones <- inClones[inClones$NumberOfClonalCells > 9,]
+  
+  inClones <- data.table(inClones)
+
+  inClones[,USType := length(unique(SAMPLETYPE)),by=CLONE]
+  inClones <- data.frame(inClones)
+  inClones <- inClones[inClones$USType > 1,]
+  
+  for(cloneID in paste0(elem,"_",unique(inClones$CLONE))){
+    
+    sub_db <- data.table(subset(mutationsAll, DonorClone == cloneID))
+    sub_db$SAMPLETYPE_C_CALL_General = paste0(sub_db$SAMPLETYPE, "_", sub_db$C_CALL_General)
+    sub_db[,mean_VH_R := mean(VH_R),by=SAMPLETYPE_C_CALL_General]
+    sub_db[,mean_VH_S := mean(VH_S),by=SAMPLETYPE_C_CALL_General]
+    sub_db[,mean_V_heavy := mean(V_heavy),by=SAMPLETYPE_C_CALL_General]
+    sub_db[,mean_selectionPres_VH := mean(selectionPres_VH),by=SAMPLETYPE_C_CALL_General]
+    
+    tmpDF = data.frame(unique(sub_db[,c("SAMPLETYPE_C_CALL_General","C_CALL_General","SAMPLETYPE", "Donor", "DonorClone", "mean_VH_R","mean_VH_S","mean_V_heavy","mean_selectionPres_VH")]))
+    allMeanVals <- rbind(allMeanVals, tmpDF)
+  }
+  
+}
+
+```
+
+```{r}
+allMeanVals = allMeanVals[allMeanVals$C_CALL_General %in% c("IGHA", "IGHG"),]
+
+allMeanVals$SAMPLETYPE_C_CALL_General <- factor(allMeanVals$SAMPLETYPE_C_CALL_General, levels = c("UC_LessINF_IGHG", "UC_INF_IGHG",
+                                                                                                  "UC_LessINF_IGHA", "UC_INF_IGHA"
+                                                                                                  ))
+
+deneme = allMeanVals[,c("Donor","DonorClone","SAMPLETYPE_C_CALL_General", "mean_V_heavy")]
+
+w <- reshape(deneme, 
+  timevar = "SAMPLETYPE_C_CALL_General",
+  idvar = c("Donor", "DonorClone"),
+  direction = "wide")
+
+
+w_INF_IGHG_LessINF_IGHA = w[,c("Donor", "DonorClone", "mean_V_heavy.UC_INF_IGHG", "mean_V_heavy.UC_LessINF_IGHA")]
+w_INF_IGHG_LessINF_IGHA <- w_INF_IGHG_LessINF_IGHA[!is.na(w_INF_IGHG_LessINF_IGHA$mean_V_heavy.UC_INF_IGHG) & !is.na(w_INF_IGHG_LessINF_IGHA$mean_V_heavy.UC_LessINF_IGHA), ]
+
+w_INF_IGHG_LessINF_IGHA <- melt(w_INF_IGHG_LessINF_IGHA, id.vars = c("Donor", "DonorClone"))
+w_INF_IGHG_LessINF_IGHA$variable <- sapply(w_INF_IGHG_LessINF_IGHA$variable , function(x){strsplit(as.character(x), "\\.")[[1]][2]})
+
+
+ggpaired(w_INF_IGHG_LessINF_IGHA, x="variable", y="value",  id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="wilcox.test",paired = F,
+                                comparisons = list(c("UC_LessINF_IGHA", "UC_INF_IGHG")),
+                                color="red", palette = "npg",
+                                label.y= c(50), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain \n V segment mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+
+
+w_INF_IGHG_LessINF_IGHG = w[,c("Donor", "DonorClone", "mean_V_heavy.UC_INF_IGHG", "mean_V_heavy.UC_LessINF_IGHG")]
+w_INF_IGHG_LessINF_IGHG <- w_INF_IGHG_LessINF_IGHG[!is.na(w_INF_IGHG_LessINF_IGHG$mean_V_heavy.UC_INF_IGHG) & !is.na(w_INF_IGHG_LessINF_IGHG$mean_V_heavy.UC_LessINF_IGHG), ]
+
+w_INF_IGHG_LessINF_IGHG <- melt(w_INF_IGHG_LessINF_IGHG, id.vars = c("Donor", "DonorClone"))
+w_INF_IGHG_LessINF_IGHG$variable <- sapply(w_INF_IGHG_LessINF_IGHG$variable , function(x){strsplit(as.character(x), "\\.")[[1]][2]})
+
+
+ggpaired(w_INF_IGHG_LessINF_IGHG, x="variable", y="value",  id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="kruskal.test",paired = F,
+                                comparisons = list(c("UC_LessINF_IGHG", "UC_INF_IGHG")),
+                                color="red", palette = "npg",
+                                label.y= c(50), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain \n V segment mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+
+w_INF_IGHG_INF_IGHA = w[,c("Donor", "DonorClone", "mean_V_heavy.UC_INF_IGHG", "mean_V_heavy.UC_INF_IGHA")]
+w_INF_IGHG_INF_IGHA <- w_INF_IGHG_INF_IGHA[!is.na(w_INF_IGHG_INF_IGHA$mean_V_heavy.UC_INF_IGHG) & !is.na(w_INF_IGHG_INF_IGHA$mean_V_heavy.UC_INF_IGHA), ]
+
+w_INF_IGHG_INF_IGHA <- melt(w_INF_IGHG_INF_IGHA, id.vars = c("Donor", "DonorClone"))
+w_INF_IGHG_INF_IGHA$variable <- sapply(w_INF_IGHG_INF_IGHA$variable , function(x){strsplit(as.character(x), "\\.")[[1]][2]})
+
+
+ggpaired(w_INF_IGHG_INF_IGHA, x="variable", y="value",  id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="kruskal.test",paired = F,
+                                comparisons = list(c("UC_INF_IGHG", "UC_INF_IGHA")),
+                                color="red", palette = "npg",
+                                label.y= c(50), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain \n V segment mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+w_LessINF_IGHA_INF_IGHA = w[,c("Donor", "DonorClone", "mean_V_heavy.UC_LessINF_IGHA", "mean_V_heavy.UC_INF_IGHA")]
+w_LessINF_IGHA_INF_IGHA <- w_LessINF_IGHA_INF_IGHA[!is.na(w_LessINF_IGHA_INF_IGHA$mean_V_heavy.UC_LessINF_IGHA) & !is.na(w_LessINF_IGHA_INF_IGHA$mean_V_heavy.UC_INF_IGHA), ]
+
+w_LessINF_IGHA_INF_IGHA <- melt(w_LessINF_IGHA_INF_IGHA, id.vars = c("Donor", "DonorClone"))
+w_LessINF_IGHA_INF_IGHA$variable <- sapply(w_LessINF_IGHA_INF_IGHA$variable , function(x){strsplit(as.character(x), "\\.")[[1]][2]})
+
+
+ggpaired(w_LessINF_IGHA_INF_IGHA, x="variable", y="value",  id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="kruskal.test",paired = F,
+                                comparisons = list(c("UC_LessINF_IGHA", "UC_INF_IGHA")),
+                                color="red", palette = "npg",
+                                label.y= c(50), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain \n V segment mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+```
+
+
+```{r}
+cList = list(  c("UC_LessINF_IGHA", "UC_INF_IGHA"), c("UC_LessINF_IGHG", "UC_INF_IGHG"),
+               c("UC_LessINF_IGHA", "UC_LessINF_IGHG"), c("UC_INF_IGHA", "UC_INF_IGHG"),
+               c("UC_INF_IGHA", "UC_LessINF_IGHG"), c("UC_LessINF_IGHA", "UC_INF_IGHG"))
+
+
+ggpaired(allMeanVals, x="SAMPLETYPE_C_CALL_General", y="mean_V_heavy", fill="SAMPLETYPE", id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="kruskal.test",paired = F,
+                                comparisons = cList,
+                                color="red", palette = "npg",
+                                label.y= c(50,50,60,65,70, 75), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain \n V segment mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+
+ggpaired(allMeanVals, x="SAMPLETYPE_C_CALL_General", y="mean_VH_R", fill="SAMPLETYPE", id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="wilcox.test",paired = F,
+                                comparisons = cList,
+                                color="red", palette = "npg",
+                                label.y= c(35,35,40,45,50,55), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain V segment \n replacement mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+
+ggpaired(allMeanVals, x="SAMPLETYPE_C_CALL_General", y="mean_VH_S", fill="SAMPLETYPE", id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="wilcox.test",paired = F,
+                                comparisons = cList,
+                                color="red", palette = "npg",
+                                label.y= c(25,25,30,35,40,45), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average number of heavy chain V segment \n silent mutations") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+ggpaired(allMeanVals, x="SAMPLETYPE_C_CALL_General", y="mean_selectionPres_VH", fill="SAMPLETYPE", id="DonorClone", line.size = 0.03,
+                     point.size = 0.1) +
+                     stat_compare_means(test="wilcox.test",paired = F,
+                                comparisons = cList,
+                                color="red", palette = "npg",
+                                label.y= c(1,1.2,1.4,1.6,1.8,2.0), aes(label = ..p.signif..))+
+              xlab("") +
+              ylab("Average selection pressure") +
+              theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+
+```
+

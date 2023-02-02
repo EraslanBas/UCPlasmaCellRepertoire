@@ -1,0 +1,166 @@
+---
+title: "Differential gene expression between inflamed / not-inflamed samples"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+set.seed(42)
+library(knitr)
+library(cowplot)
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(RColorBrewer)
+
+reticulate::use_python("/anaconda3/bin/python", required = T)
+
+samps <-  readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+IG_genes <- read.csv(paste0(dataDir,"IG_Genes.txt"), sep = '\t', stringsAsFactors = F)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=12}
+
+# df=data.frame( sampleNames=sampleNames,
+#                  sampleAttributes=factor(sampleAttributesPrint, levels = c("UC Inflamed", "UC Non-Inflamed", "PSC1 Non-Inflamed", "Healthy")),
+#                  donorID=as.factor(donorID),
+#                  index=1:length(sampleNames))
+# difExpGenes <- list()
+# integratedDonors <- list()
+## DE per donor
+# for(donID in as.character(unique(df$donorID))){
+#   attrb <- as.character(df[df$donorID == donID, "sampleAttributes"])
+#   
+#   if(("UC Inflamed" %in% attrb) & ("UC Non-Inflamed" %in% attrb)){
+#     donSamps <- samps[df[df$donorID == donID, "index"]]
+#     
+#     print(paste0("Donor id", donID))
+#   
+#     for(i in 1:length(donSamps)){
+#       serObj <- donSamps[[i]]
+#       print(serObj$orig.ident)
+#       print(dim(serObj@assays$RNA))
+#       donSamps[[i]] <- serObj[rownames(serObj[["RNA"]]) %ni% c(as.character(IG_genes$Gene.name),"CH17-262H11.1", "AC233755.1","CH17-212P11.4", "AC233755.2", "CH17-224D4.1"),]
+#     }
+    
+    # immune.anchors <- FindIntegrationAnchors(object.list = donSamps)
+    # immune.combined <- IntegrateData(anchorset = immune.anchors, dims = 1:50)
+    # 
+    # immune.combined <- ScaleData(immune.combined, verbose = FALSE)
+    # immune.combined <- RunPCA(immune.combined, npcs = 50, verbose = FALSE)
+    # Idents(immune.combined) <- "stim"
+    # uc.response <- FindMarkers(immune.combined, ident.1 = "UC_INF", ident.2 = "UC_NonINF", verbose = FALSE)
+    # 
+    # immune.combined <- FindNeighbors( immune.combined, dims = 1:50)
+    # immune.combined <- FindClusters( immune.combined, resolution = 0.3)
+    # 
+    # immune.combined <- RunTSNE( immune.combined, dims = 1:50)
+    # immune.combined <- RunUMAP( immune.combined, dims = 1:50)
+      
+    #print(DoHeatmap(immune.combined, features = c("HLA-DRA","HLA-DPB1","HLA-DRB5","HLA-DPA1","HLA-DRB1","HLA-DQA1")) + NoLegend()+theme(axis.text.y = element_text(size = 10)))
+    #print(FeaturePlot(immune.combined, features = c("HLA-DRA","HLA-DPB1","HLA-DRB5","HLA-DPA1","HLA-DRB1","HLA-DQA1"), split.by = "stim"))
+    
+    #print(head(uc.response, n=20))
+     
+    # print(DotPlot(immune.combined, features = rownames(head(uc.response, n=20)),
+    #                cols = c("blue", "red"),
+    #                dot.scale = 8, split.by = "stim", col.min = -0.9, col.max = 0.5)+ RotatedAxis()+ggtitle(paste0("DON_",donID)))
+#     difExpGenes <- lappend(difExpGenes, uc.response)
+#     integratedDonors <- lappend(integratedDonors, immune.combined)
+#   }
+#   
+#   
+# }
+
+
+  # donSamps <- samps[df[df$sampleAttributes %in% c("UC Inflamed", "UC Non-Inflamed"),"index"]]
+  # for(i in 1:length(donSamps)){
+  #     serObj <- donSamps[[i]]
+  #     donSamps[[i]] <- serObj[rownames(serObj[["RNA"]]) %ni% IG_genes$Gene.name,]
+  #   }
+  #   
+  #   immune.anchors <- FindIntegrationAnchors(object.list = donSamps)
+  #   immune.combined <- IntegrateData(anchorset = immune.anchors, dims = 1:50)
+  # 
+  #   immune.combined <- ScaleData(immune.combined, verbose = FALSE)
+  #   immune.combined <- RunPCA(immune.combined, npcs = 50, verbose = FALSE)
+  #   Idents(immune.combined) <- "stim"
+  #   
+  #   uc.response <- FindMarkers(immune.combined, ident.1 = "UC_INF", ident.2 = "UC_NonINF", verbose = FALSE)
+  #   print(head(uc.response, n=20))
+  #    
+  #   print(DotPlot(immune.combined, features = rownames(head(uc.response, n=20)),
+  #                  cols = c("blue", "red"),
+  #                  dot.scale = 8, split.by = "stim", col.min = -0.9, col.max = 0.5)+ RotatedAxis()+ggtitle("ALL"))
+  #   difExpGenes <- lappend(difExpGenes, uc.response)
+  #   
+ #   saveRDS(difExpGenes, paste0(dataDir,"/RDSFiles/difExpInfNonInfGenes.rds"))
+#    saveRDS(integratedDonors, paste0(dataDir,"/RDSFiles/integratedDonors.rds"))
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=12}
+integratedDonors <- readRDS(paste0(dataDir,"/RDSFiles/integratedDonors.rds"))
+
+for ( immune.combined in integratedDonors){
+  
+  #p1 <- DimPlot(immune.combined, reduction = "umap", group.by = "stim", label.size = 7)+
+  #  theme(legend.text = element_text(size=20), strip.text = element_text(size=30))+
+  #  scale_color_manual(values = colorRampPalette(brewer.pal(12, "Accent"))(length(levels(immune.combined$seurat_clusters))))
+  
+  #p2 <- DimPlot(immune.combined, reduction = "umap", label = TRUE, label.size = 7)+
+  #  theme(legend.text = element_text(size=20), strip.text = element_text(size=30))+
+   # scale_color_manual(values = colorRampPalette(brewer.pal(12, "Accent"))(length(levels(immune.combined$seurat_clusters))))
+  
+  #print(plot_grid(p1, p2))
+  print(DimPlot(immune.combined, reduction = "umap", split.by = "stim", label = TRUE, label.size = 7)+
+          theme(legend.text = element_text(size=20), strip.text = element_text(size=25))+
+            scale_color_manual(values = colorRampPalette(brewer.pal(12, "Accent"))(length(levels(immune.combined$seurat_clusters)))))
+  print(DoHeatmap(immune.combined, features = c("HLA-DRA","HLA-DPB1","HLA-DRB5","HLA-DPA1","HLA-DRB1","HLA-DQA1")) + 
+          NoLegend()+theme(axis.text.y = element_text(size = 20)))
+  print(FeaturePlot(immune.combined, features = c("HLA-DRA","HLA-DPB1","HLA-DRB5","HLA-DPA1","HLA-DRB1","HLA-DQA1"), 
+                    split.by = "stim",pt.size = 0.5 , cols = c("grey","red"))+theme(legend.text = element_text(size=20), 
+                                                                                    strip.text = element_text(size=25))+
+            scale_color_manual(values = colorRampPalette(brewer.pal(12, "Accent"))(length(levels(immune.combined$seurat_clusters)))))
+    
+    #print(head(uc.response, n=20))
+     
+    # print(DotPlot(immune.combined, features = rownames(head(uc.response, n=20)),
+    #                cols = c("blue", "red"),
+    #                dot.scale = 8, split.by = "stim", col.min = -0.9, col.max = 0.5)+ RotatedAxis()+ggtitle(paste0("DON_",donID)))
+}
+
+```
+
+```{r cho=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=10}
+difExpGenes <- readRDS(paste0(dataDir,"/RDSFiles/difExpInfNonInfGenes.rds"))
+names(difExpGenes) <- c("DON_10094","DON_10122","DON_8260")
+difExpGenesNames <- lapply(difExpGenes, function(x){return(rownames(x[x$p_val_adj<0.05,]))})
+allGeneNames <- table(unlist(difExpGenesNames))
+
+
+dfM <- matrix(0, nrow=length(allGeneNames),
+              ncol=3)
+rownames(dfM) <- names(allGeneNames)
+colnames(dfM) <- c("DON_10094","DON_10122","DON_8260")
+
+for(i in names(allGeneNames)){
+  for(j in c("DON_10094","DON_10122","DON_8260")){
+    if(i %in% difExpGenesNames[[j]]){
+       dfM[i,j] <- difExpGenes[[j]][i,"avg_logFC"]
+    }
+  }
+}
+
+dfM[dfM>0.5] <- 0.5
+dfM[dfM < -0.5] <- -0.5
+
+pheatmap((dfM), treeheight_row = 0, 
+         treeheight_col = 0, cluster_col = F, 
+         legend = T, fontsize_row = 8, fontsize_col = 7, 
+         main="Differentially expressed genes in \n inflamed samples compared to non-inflamed samples")
+ 
+```
+

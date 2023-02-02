@@ -1,0 +1,311 @@
+---
+title: "Per donor transcriptome analysis with batch correction (Combat)"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("/home/beraslan/WORKSPACE/BCell/Main.R")
+library(gtools)
+library(RColorBrewer)
+library(calibrate)
+library('sva')
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(liger)
+library(Seurat)
+library(SeuratWrappers)
+reticulate::use_python("/home/beraslan/anaconda3/bin/python", required = T)
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+  # donorObjects <- list()
+  # 
+  # for(elem in c("UC3","UC10","UC15","UC16","UC17","UC18", "Healthy1","Healthy2","Healthy3","UC4","UC9","UC14")){
+  # 
+  #   sampsTemp <- samples[samples$DonorID == elem ,]
+  # 
+  #   fTemp = data.frame()
+  # 
+  # 
+  #   print(sampsTemp[1,"SampleNames"])
+  #   allMatrix <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampsTemp[1,"SampleNames"]))
+  #   colnames(allMatrix) <- paste0(colnames(allMatrix), "_", sampsTemp[1,"SampleIdentifier"])
+  #   cellB <- unique(colnames(allMatrix))
+  # 
+  #   vdjAnnot <- read.table(paste0(dataDir, "/VDJ_Files/",sampsTemp[1,"SampleNames"],"/ChangeO/filtered_single_light_heavy_paired.tab"),
+  #                        stringsAsFactors = F, header = T, sep="\t")
+  #   vdjAnnot <- vdjAnnot[vdjAnnot$C_CALL != "",]
+  #   vdjAnnot$C_CALL_LIGHT <- sapply(vdjAnnot$C_CALL_LIGHT, function(x){substr(x,1,3)})
+  #   vdjAnnot <- vdjAnnot[vdjAnnot$C_CALL_LIGHT %in% c("IGK", "IGL"),]
+  # 
+  #   vdjAnnot$vdjCellB <- unique(sapply(vdjAnnot$CELL, function(x){strsplit(x,"-")[[1]][1]}))
+  #   vdjAnnot$vdjCellB <- paste0(vdjAnnot$vdjCellB,  "_", sampsTemp[1,"SampleIdentifier"])
+  #   cellB <- cellB[cellB %in% vdjAnnot$vdjCellB]
+  #   allMatrix <- allMatrix[,cellB]
+  # 
+  # 
+  #   vdjAnnotA <- vdjAnnot[,c("vdjCellB", "C_CALL", "C_CALL_LIGHT")]
+  # 
+  #   rownames(vdjAnnotA) <- vdjAnnotA$vdjCellB
+  # 
+  #   metaDF <- data.frame(sampleName=rep(as.character(sampsTemp[1,"SampleNames"]),ncol(allMatrix)),
+  #                      position = rep(as.character(sampsTemp[1,"Position"]),ncol(allMatrix)),
+  #                      donorID=rep(as.character(sampsTemp[1,"DonorID"]),ncol(allMatrix)),
+  #                      stim=rep(as.character(sampsTemp[1,"SampleAttributes"]),ncol(allMatrix)),
+  #                      replicates=rep(as.character(sampsTemp[1,"Replicates"]),ncol(allMatrix)),
+  #                      lane=rep(as.character(sampsTemp[1,"Lane"]),ncol(allMatrix)),
+  #                      heavyChain= vdjAnnotA[colnames(allMatrix),"C_CALL"],
+  #                      lightChain= vdjAnnotA[colnames(allMatrix),"C_CALL_LIGHT"],
+  #                      stringsAsFactors = F)
+  # 
+  #   if(length(sampsTemp$SampleNames) > 1){
+  #       for(i in 2:length(sampsTemp$SampleNames)){
+  #          print(sampsTemp[i,"SampleNames"])
+  #          k <- Read10X(data.dir = paste0(dataDir, "/CountMatrices/", sampsTemp[i,"SampleNames"]))
+  #          colnames(k) <- paste0(colnames(k), "_", sampsTemp[i,"SampleIdentifier"])
+  #          cellB <- unique(colnames(k))
+  # 
+  #          vdjAnnot <- read.table(paste0(dataDir, "/VDJ_Files/",sampsTemp[i,"SampleNames"],"/ChangeO/filtered_single_light_heavy_paired.tab"),
+  #                        stringsAsFactors = F, header = T, sep="\t")
+  #          vdjAnnot <- vdjAnnot[vdjAnnot$C_CALL != "",]
+  #          vdjAnnot$C_CALL_LIGHT <- sapply(vdjAnnot$C_CALL_LIGHT, function(x){substr(x,1,3)})
+  #          vdjAnnot <- vdjAnnot[vdjAnnot$C_CALL_LIGHT %in% c("IGK", "IGL"),]
+  # 
+  #          vdjAnnot$vdjCellB <- unique(sapply(vdjAnnot$CELL, function(x){strsplit(x,"-")[[1]][1]}))
+  #          vdjAnnot$vdjCellB <- paste0(vdjAnnot$vdjCellB,  "_", sampsTemp[i,"SampleIdentifier"])
+  #          cellB <- cellB[cellB %in% vdjAnnot$vdjCellB]
+  #          k <- k[,cellB]
+  # 
+  #          allMatrix <- cbind(allMatrix, k)
+  # 
+  #          vdjAnnotA <- vdjAnnot[,c("vdjCellB", "C_CALL", "C_CALL_LIGHT")]
+  #          rownames(vdjAnnotA) <- vdjAnnotA$vdjCellB
+  # 
+  #          tmpmetaDF <- data.frame(sampleName=rep(as.character(sampsTemp[i,"SampleNames"]),ncol(k)),
+  #                      position = rep(as.character(sampsTemp[i,"Position"]),ncol(k)),
+  #                      donorID=rep(as.character(sampsTemp[i,"DonorID"]),ncol(k)),
+  #                      stim=rep(as.character(sampsTemp[i,"SampleAttributes"]),ncol(k)),
+  #                      replicates=rep(as.character(sampsTemp[i,"Replicates"]),ncol(k)),
+  #                      lane=rep(as.character(sampsTemp[i,"Lane"]),ncol(k)),
+  #                      heavyChain= vdjAnnotA[colnames(k),"C_CALL"],
+  #                      lightChain= vdjAnnotA[colnames(k),"C_CALL_LIGHT"],
+  #                      stringsAsFactors = F)
+  # 
+  #          metaDF <<- rbind(metaDF, tmpmetaDF)
+  #        }
+  #   }
+  # 
+  # 
+  #   serObj <- CreateSeuratObject(counts = allMatrix, project = elem, min.features=300, min.cells = 20)
+  #   x <- metaDF$sampleName
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$sampleName <-x
+  # 
+  #   x <- metaDF$position
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$position <- x
+  # 
+  #   x <- metaDF$stim
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$stim <- x
+  # 
+  #   x <- metaDF$replicates
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$replicates <- x
+  # 
+  #   x <- metaDF$lane
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$lane <- x
+  # 
+  #   x <- metaDF$heavyChain
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$heavyChain <- x
+  # 
+  # 
+  #   x <- metaDF$lightChain
+  #   names(x) <- colnames(allMatrix)
+  #   serObj$lightChain <- x
+  # 
+  # 
+  #   serObj$donor <- elem
+  #   serObj[["percent.mt"]] <- PercentageFeatureSet(serObj, pattern = "^MT-")
+  # 
+  #   allGenes <- rownames(serObj@assays$RNA)
+  #   mtGenes <- allGenes[grep("^MT-", rownames(serObj@assays$RNA))]
+  #   otherGenes <- allGenes[allGenes %ni% c(mtGenes, IgGenes)]
+  #   serObj <- subset(x=serObj, features = otherGenes)
+  # 
+  #   serObj <- subset(serObj, subset =  percent.mt < 5)
+  # 
+  #   serObj <- NormalizeData(serObj, verbose = FALSE)
+  # 
+  #     if(length(unique(serObj$lane)) > 1){
+  #        m = as.matrix(GetAssayData(serObj))
+  #        com = ComBat(m, serObj$lane, prior.plots=FALSE, par.prior=TRUE)
+  #    
+  #        serObj@assays$RNA@data <- com
+  #    }
+  # 
+  #   serObj <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 2000)
+  # 
+  #   serObj <- ScaleData(serObj, verbose = FALSE)
+  #   serObj <- RunPCA(serObj, npcs = 50, verbose = FALSE)
+  #   Idents(serObj) <- "sampleName"
+  # 
+  #   use_these_factors = 1:50
+  # 
+  #   # if(length(unique(serObj$lane)) > 1){
+  #   #
+  #   #   serObj <- RunOptimizeALS(serObj, k = length(use_these_factors), lambda = 5, split.by = "lane")
+  #   #
+  #   #
+  #   #   cells.use = names(which(rowSums(serObj@reductions$iNMF_raw@cell.embeddings[,use_these_factors])>0))
+  #   #   serObj = subset(serObj,cells=cells.use)
+  #   #   serObj <- RunQuantileAlignSNF(serObj, split.by = "lane", min_cells=5, resolution=0.1, dims.use=use_these_factors)
+  #   #   serObj$seurat_clusters <- serObj$alignment.clusters
+  #   #
+  #   # }else{
+  #     serObj <- FindNeighbors( serObj, dims = use_these_factors)
+  #     serObj <- FindClusters( serObj, resolution = 0.2)
+  #   #}
+  # 
+  # 
+  #   #serObj <- RunTSNE( serObj, dims = 1:50)
+  #   serObj <- RunUMAP( serObj, dims = 1:50)
+  # 
+  #   donorObjects <- lappend(donorObjects, serObj)
+  # 
+  #  }
+  # #
+  #   saveRDS(donorObjects, paste0(dataDir, "/RDSFiles/donorObjects_combatLaneCorrected.rds"))
+    donorObjects <- readRDS(paste0(dataDir, "/RDSFiles/donorObjects_combatLaneCorrected.rds"))
+```
+
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=8}
+  
+  allObjMarkers <- readRDS(paste0(dataDir, "/RDSFiles/allObjMarkersPerDonor_combatLaneCorrected.rds"))
+  #allObjMarkers <- list()
+
+  for(i in 1:length(donorObjects)){
+    
+    donObj <- donorObjects[[i]]
+    print(paste0("############################   ",unique(donObj$orig.ident), "   ###########################"))
+
+   
+    print(DimPlot(donObj, reduction = "umap", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," seurat clusters"))
+
+    print(DotPlot(donObj, assay="RNA", features = unlist(list("plasma cells"=c("SDC1", "CD27", "CD38"),
+                                                       "T cells" = c("CD4", "CD8A", "CD3D", "TRDJ1", "TRAJ9", "TRGJ1"),
+                                                       "Monocyte"=c("CD14", "FCGR1B", "FCGR3B"),
+                                                       "DCs"=c("ITGAX", "ITGAM", "CD1C"),
+                                                       "Eosinophils"=c("SIGLEC5", "ENPP3"),
+                                                       "Stromal cells" = c("ACTA2", "PDPN", "LYVE1", "THY1", "FAP"))), cols = c("red", "blue"),
+                  dot.scale = 6,  col.min = 0, col.max = 6) +
+                  RotatedAxis()+ggtitle(paste0(unique(donObj$orig.ident))))
+
+
+     donObj$sampleName <- as.factor(donObj$sampleName)
+     print(DimPlot(donObj, reduction = "umap", group.by = "sampleName", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," Sample Name"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "sampleName", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," Sample Name"))
+
+   
+     donObj$objectUniqueChar <- donObj$orig.ident
+    
+    if(length(unique(donObj$seurat_clusters)) > 1){
+        plotClusterPercentage(donObj, objectUniqueChar=unique(donObj$objectUniqueChar))
+        #obj.markers <- FindAllMarkers(donObj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+        #obj.markers <- obj.markers[obj.markers$p_val_adj < 0.1,]
+  
+        #allObjMarkers <- lappend(allObjMarkers, obj.markers)
+        obj.markers <- allObjMarkers[[i]]
+        top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+          
+        
+        for(myClustI in unique(donObj$seurat_clusters)){
+          print(paste0("Cluster ", myClustI))
+          print(paste0(unlist(top10[top10$cluster == myClustI, "gene"]), collapse = ", "))
+        }
+         
+        print(DoHeatmap(donObj, features = top10$gene) +
+              theme(axis.text.y =element_text(size=6)))
+
+        print(DotPlot(donObj, assay="RNA", features = unique(rev(top10$gene)), cols = c("red", "blue"),
+                   dot.scale = 6,  col.min = 0, col.max = 6) +
+                   RotatedAxis()+ggtitle(paste0(unique(donObj$orig.ident))))
+
+        getDonorClusterGOTerms(donObj, obj.markers,fileAppendStr="PerDonorCombatLaneCorrected")
+        
+    donObj$lane <- as.factor(donObj$lane)
+     print(DimPlot(donObj, reduction = "umap", group.by = "lane", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident)), " Lane"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "lane", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident)), " Lane"))
+
+     donObj$replicates <- as.factor(donObj$replicates)
+     print(DimPlot(donObj, reduction = "umap", group.by = "replicates", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," replicates"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "replicates", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," replicates"))
+
+     donObj$stim <- as.factor(donObj$stim)
+     print(DimPlot(donObj, reduction = "umap", group.by = "stim", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," sample attribute"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "stim", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," sample attribute"))
+
+     donObj$position <- as.factor(donObj$position)
+     print(DimPlot(donObj, reduction = "umap", group.by = "position", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," position"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "position", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," position"))
+
+     donObj$heavyChain <- as.factor(donObj$heavyChain)
+     print(DimPlot(donObj, reduction = "umap", group.by = "heavyChain", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," heavyChain"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "heavyChain", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," heavyChain"))
+
+    donObj$stimHeavyChain <- paste0(donObj$stim, "_", donObj$heavyChain)
+     donObj$stimHeavyChain <- as.factor(donObj$stimHeavyChain)
+     print(DimPlot(donObj, reduction = "umap", group.by = "stimHeavyChain", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," sample attribute and heavy chain"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "stimHeavyChain", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," sample attribute and heavy chain"))
+     
+
+     donObj$lightChain <- as.factor(donObj$lightChain)
+     print(DimPlot(donObj, reduction = "umap", group.by = "lightChain", pt.size = 0.05, label = TRUE)+
+             ggtitle(paste0(unique(donObj$orig.ident))," lightChain"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "lightChain", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," lightChain"))
+     
+     donObj$stimLightChain <- paste0(donObj$stim, "_", donObj$lightChain)
+     donObj$stimLightChain <- as.factor(donObj$stimLightChain)
+     print(DimPlot(donObj, reduction = "umap", group.by = "stimLightChain", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," sample attribute and light chain"))
+     print(DimPlot(donObj, reduction = "umap", split.by = "stimLightChain", pt.size = 0.05)+
+             ggtitle(paste0(unique(donObj$orig.ident))," sample attribute and light chain"))
+
+    }else{
+       allObjMarkers <- lappend(allObjMarkers, NULL)
+    }
+    
+  }
+  
+  #names(allObjMarkers) <- unique(as.character(samples$DonorID))
+  #saveRDS( allObjMarkers, paste0(dataDir, "/RDSFiles/allObjMarkersPerDonor_combatLaneCorrected.rds"))
+ 
+```
+
+

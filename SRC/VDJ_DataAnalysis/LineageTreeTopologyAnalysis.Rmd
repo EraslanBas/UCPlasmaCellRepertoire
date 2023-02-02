@@ -1,0 +1,254 @@
+---
+title: "Topology Analysis Of The Lineage Trees"
+output:
+  html_document:
+    df_print: paged
+---
+
+Topology analysis of the B-cell clonal lineage trees per merged technical replicates.
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("phyloTop")
+library(igraph)
+library(ape)
+library("CollessLike")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+rownames(samples) <- samples$SampleNames
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+allTrees <- data.frame()
+
+for(elem in c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22","UC4", "UC9", "UC14", "UC19","UC23","Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy7", "Healthy8", "Healthy9")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones)
+  allClones <- unique(inClones$CLONE)
+
+
+  for(inClone in allClones){
+    sub_db <- subset(inClones, CLONE == inClone)
+    cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F)
+    cloneGraph <- getGraphObject(cloneInfo, cloneID=inClone)
+
+    if(!is.null(cloneGraph)){
+         pathLengths <- getPathLengths(cloneGraph, root="Germline")
+         #pathLengths <- pathLengths[!grepl("Inferred",pathLengths$NAME),]
+         pathLengths <- pathLengths[!grepl("Germline",pathLengths$NAME),]
+         pathLengths$CLONE <- inClone
+         pathLengths$donorID <- elem
+         pathLengths$donorAttribute <- unique(samples[samples$DonorID == elem, "DonorAttribute"])
+         pathLengths$NumberOfClonalCells <- unique(sub_db$NumberOfClonalCells)
+         summaryTree <- summarizeSubtrees(cloneGraph, fields = c("C_CALL_General", "SAMPLETYPE", "COLLAPSE_COUNT"), root = "Germline")
+         pathLengths <- merge(pathLengths, summaryTree, by="NAME")
+
+         #plotClone(cloneInfo, titleStr="deneme")
+         k <- getBalanceIndices(cloneGraph)
+         pathLengths$Colles <- k[1]
+         pathLengths$Sackin <- k[2]
+         pathLengths$Cophenetic <- k[3]
+         pathLengths$clonalMaxDistance <- max(pathLengths$DISTANCE, na.rm = T)
+         pathLengths$clonalMinDistance <- min(pathLengths$DISTANCE, na.rm = T)
+         pathLengths$maxCollapseCount <- max(pathLengths$COLLAPSE_COUNT, na.rm = T)
+         pathLengths$maxSTEPS <- max(pathLengths$STEPS, na.rm = T)
+
+         allTrees <- rbind(allTrees, pathLengths)
+    }else {
+
+         seq_len = unique(stri_length( cloneInfo@data[["SEQUENCE"]]))
+         germ_len = ifelse(length( cloneInfo@germline) == 0, 0, stri_length( cloneInfo@germline))
+
+         if(seq_len==germ_len){
+
+         allTrees <- rbind(allTrees, c(NAME=strsplit(cloneInfo@data$CELL,",")[[1]][1],
+                                       STEPS=1,
+                                       DISTANCE=seqDist(cloneInfo@data$SEQUENCE, cloneInfo@germline),
+                                       CLONE=inClone,
+                                       donorID=elem,
+                                       donorAttribute=unique(samples[samples$DonorID == elem, "DonorAttribute"]),
+                                       NumberOfClonalCells=unique(sub_db$NumberOfClonalCells),
+                                       C_CALL_General=cloneInfo@data$C_CALL_General,
+                                       SAMPLETYPE=cloneInfo@data$SAMPLETYPE,
+                                       COLLAPSE_COUNT=cloneInfo@data$COLLAPSE_COUNT,
+                                       PARENT="Germline",
+                                       OUTDEGREE=0,
+                                       SIZE=0,
+                                       DEPTH=0,
+                                       PATHLENGTH=0,
+                                       OUTDEGREE_NORM=0,
+                                       SIZE_NORM=0,
+                                       DEPTH_NORM=0,
+                                       PATHLENGTH_NORM=0,
+                                       Colles=0,
+                                       Sackin=0,
+                                       Cophenetic=0,
+                                       clonalMaxDistance=0,
+                                       clonalMinDistance=0,
+                                       maxCollapseCount=cloneInfo@data$COLLAPSE_COUNT,
+                                       maxSTEPS=0))
+         }
+    }
+
+  }
+}
+
+saveRDS(allTrees, paste0(dataDir, "/RDSFiles/allTreeTopology_perDonor.rds"))
+#allTrees <- readRDS(paste0(dataDir, "/RDSFiles/allTreeTopology_perDonor.rds"))
+
+```
+
+```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=6}
+plotAttribute <- function(inDF, ylabStr){
+  inDF <- unique(inDF)
+  colnames(inDF) <- c("donorID", "donorAttribute", "CLONE", "attributeToPlot")
+  inDF$attributeToPlot <- as.numeric(inDF$attributeToPlot)
+  inDF <- as.data.frame(inDF)
+  inDF <- inDF[!is.na(inDF$attributeToPlot),]
+  ggplot(data=inDF, aes(x=reorder(donorID, attributeToPlot, FUN = median), y=attributeToPlot, fill=donorAttribute)) +
+    geom_boxplot() +
+    scale_y_continuous(trans='log2')+
+    #stat_summary(fun.data=mean_sdl, mult=1, 
+    #             geom="pointrange", color="red")+
+    #facet_wrap(.~SAMPLETYPE, scales = "free_x")+
+    theme_bw()+
+    ylab(ylabStr)+xlab("")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=6}
+allTrees <- as.data.table(allTrees)
+
+allTrees <- allTrees[!grepl("Inferred",allTrees$NAME),]
+
+allTrees[,c("STEPS","DISTANCE","CLONE","NumberOfClonalCells", "COLLAPSE_COUNT", "OUTDEGREE", "SIZE","DEPTH", "PATHLENGTH", "OUTDEGREE_NORM", "SIZE_NORM", "DEPTH_NORM", "PATHLENGTH_NORM", "Colles", "Sackin", "Cophenetic",
+  "clonalMaxDistance", "clonalMinDistance", "maxCollapseCount", "maxSTEPS")] <- lapply(allTrees[,c("STEPS","DISTANCE","CLONE","NumberOfClonalCells", "COLLAPSE_COUNT", "OUTDEGREE", "SIZE","DEPTH", "PATHLENGTH", "OUTDEGREE_NORM", "SIZE_NORM", "DEPTH_NORM", "PATHLENGTH_NORM", "Colles", "Sackin", "Cophenetic",
+  "clonalMaxDistance", "clonalMinDistance", "maxCollapseCount", "maxSTEPS")], as.numeric)
+
+allTrees <- allTrees[allTrees$C_CALL_General!="",]
+ 
+allTrees[,Clonal_C_CALL_General:=paste(unique(strsplit(C_CALL_General,",")[[1]]), collapse = ","),by=c("donorID","CLONE")]
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=2}
+plotAttribute(inDF = allTrees[,c("donorID", "donorAttribute", "CLONE","NumberOfClonalCells")], ylabStr= "Total number of cells per clone")
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=2}
+plotAttribute(inDF = allTrees[,c("donorID", "donorAttribute", "CLONE","maxCollapseCount")], ylabStr= "Maximum number of identical cells per clone")
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=2}
+plotAttribute(inDF = allTrees[,c("donorID", "donorAttribute", "CLONE","clonalMaxDistance")], ylabStr= "Maximum distance to germline sequence")
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=2}
+plotAttribute(inDF = allTrees[,c("donorID", "donorAttribute", "CLONE","clonalMinDistance")],
+              ylabStr= "Minimum distance to germline sequence")
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=2}
+plotAttribute(inDF = allTrees[,c("donorID", "donorAttribute", "CLONE","maxSTEPS")], ylabStr= "Maximum depth")
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=8}
+allTreesTmp <- allTrees[allTrees$NumberOfClonalCells > 10,]
+tempDF <- unique(allTreesTmp[,c("donorID", "donorAttribute","CLONE","clonalMaxDistance")])
+tempDF$donorID <- factor(tempDF$donorID, levels = c("UC3", "UC10", "UC15", "UC16","UC17", "UC4", "UC9", "UC14", "Healthy1", "Healthy2", "Healthy3"))
+plotList <- list()
+colorCode=c("navy","darkgreen","red")
+i=1
+for(elem in unique(tempDF$donorAttribute)){
+  
+  kk <- tempDF[tempDF$donorAttribute==elem,]
+  
+  p <- ggplot(data=kk, aes(x=clonalMaxDistance)) +
+       geom_histogram(aes(y=..density..), colour="black", fill="white")+
+       geom_density(alpha=.2, fill="#FF6666") +
+       facet_wrap(.~donorID, nrow = 1)+
+       geom_vline(aes(xintercept=mean(clonalMaxDistance)), color="blue",linetype="dashed")+
+       xlim(0,100)
+  print(p)
+  plotList <- lappend(plotList, p)
+  i <- i+1
+}
+
+plot_grid(plotlist = plotList, nrow = length(unique(tempDF$donorAttribute)))
+
+```
+```{r}
+tempDF$donorID <- as.character(tempDF$donorID)
+plotAttribute(inDF = tempDF[,c("donorID", "donorAttribute","CLONE","clonalMaxDistance")], ylabStr= "Total number of cells per clone")
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=3}
+allTreesTmp <- allTrees[allTrees$NumberOfClonalCells > 30,]
+tempDF <- unique(allTreesTmp[,c("donorID", "donorAttribute","COLLAPSE_COUNT","DISTANCE", "CLONE")])
+tempDF$donorID <- factor(tempDF$donorID, levels = c("UC3", "UC10", "UC15", "UC16","UC17", "UC4", "UC9", "UC14", "Healthy1", "Healthy2", "Healthy3"))
+plotList <- list()
+colorCode=c("navy","darkgreen","red")
+i=1
+for(elem in unique(tempDF$donorAttribute)){
+  
+  kk <- tempDF[tempDF$donorAttribute==elem,]
+  
+  p <- ggplot(data=kk, aes(x=COLLAPSE_COUNT, y=DISTANCE)) +
+    geom_point(size=2, shape=20, alpha=0.5, color=colorCode[i])+geom_smooth(method = "loess")+
+    facet_wrap(.~donorID, nrow = 1, scales = "free_x")+
+    theme_bw()+
+    scale_y_continuous(trans='log2', breaks = c(0,5,10,20,40,80,160,320))+
+    scale_x_continuous(trans='log2')+
+    ylab("")+
+    xlab("")+ggtitle(elem)
+  print(p)
+  plotList <- lappend(plotList, p)
+  i <- i+1
+}
+
+plot_grid(plotlist = plotList, nrow = length(unique(tempDF$donorAttribute)))
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=4}
+ 
+tempDF <- unique(allTrees[,c("donorID", "donorAttribute","NumberOfClonalCells","maxCollapseCount", "CLONE","Colles","Sackin","Cophenetic")])
+tempDF$donorID <- factor(tempDF$donorID, levels = c("UC3", "UC10", "UC15", "UC16","UC17", "UC4", "UC9", "UC14", "Healthy1", "Healthy2", "Healthy3"))
+plotList <- list()
+colorCode=c("navy","darkgreen","red")
+i=1
+for(elem in unique(tempDF$donorAttribute)){
+  
+  axisLimX <- max(tempDF[tempDF$donorAttribute==elem,"NumberOfClonalCells"])
+  axisLimY <- max(tempDF[tempDF$donorAttribute==elem,"maxCollapseCount"])
+  kk <- tempDF[tempDF$donorAttribute==elem,]
+  
+  p <- ggplot(data=kk, aes(x=NumberOfClonalCells, y=Colles)) +
+    geom_point(size=2, shape=20, alpha=0.5, color=colorCode[i])+geom_smooth(method = "loess")+
+    facet_wrap(.~donorID, nrow = 1, scales = "free")+
+    theme_bw()+
+    #scale_y_continuous(trans='log2', breaks = c(0,5,10,20,40,80,160,320))+
+    scale_y_continuous(trans='log2')+
+    scale_x_continuous(trans='log2')+
+    ylab("")+
+    xlab("")+geom_abline(slope = 1, intercept = 0)+ggtitle(elem)
+  print(p)
+  plotList <- lappend(plotList, p)
+  i <- i+1
+}
+
+plot_grid(plotlist = plotList, nrow = length(unique(tempDF$donorAttribute)))
+```
+

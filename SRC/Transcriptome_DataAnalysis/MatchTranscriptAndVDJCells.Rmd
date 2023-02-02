@@ -1,0 +1,100 @@
+---
+title: "Match transcriptome and VDJ cell barcodes"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("cowplot")
+library("RColorBrewer")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+samples <- readRDS(paste0(dataDir, "/RDSFiles/UnfilteredData_v2.rds"))
+names(samples) <- sampleNames
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  numberOfMatchingCells <- c()
+  cellBs <- c()
+  vdjBs <- c()
+  for(i in 1:length(samples)){
+
+    serObj <- samples[[i]]
+    cellB <- unique(colnames(serObj@assays$RNA))
+    cellBs <- c(cellBs, length(cellB))
+    
+    vdjAnnot <- read.csv(paste0(dataDir, "/VDJ_Files/",sampleNames[i],"/filtered_contig_annotations.csv"),
+                         stringsAsFactors = F)
+    
+    vdjCellB <- unique(vdjAnnot$barcode)
+
+    #vdjCellB <- unique(sapply(vdjAnnot$barcode, function(x){strsplit(x,"-")[[1]][1]}))
+    vdjBs <- c(vdjBs, length(vdjCellB))
+    
+    numberOfMatchingCells <- c(numberOfMatchingCells, length(which(cellB %in% vdjCellB)))
+  }
+
+  names(numberOfMatchingCells) <- sampleNames
+  
+  df=data.frame(numberOfMatchingCells=numberOfMatchingCells,
+                 cellBs=cellBs,
+                 vdjBs=vdjBs,
+                 sampleNames=sampleNames,
+                 sampleAttributes=factor(sampleAttributesPrint,
+                                         levels = c("UC Inflamed", "UC Less Inflamed","UC Non-Inflamed", "Healthy")),
+                 donorID=as.factor(donorID))
+
+  #print(numberOfMatchingCells)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+  df[df$sampleNames == "HC7TC","cellBs"] <- 13000
+  saveRDS(df, paste0(dataDir,"/RDSFiles/DataSummaryTable.rds"))
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=25, fig.height=12}
+  
+
+  p1 <- ggplot(data=df, aes(x=sampleNames, y=cellBs, fill=sampleAttributes)) +
+    geom_bar(stat="identity")+
+    facet_wrap( ~ donorID, scales='free_x', nrow = 1)+
+    scale_fill_manual(values = colorRampPalette(brewer.pal(200, "Dark2"))(length(unique(sampleAttributes))))+
+    theme_bw()+
+    theme(axis.text.x = element_blank(), axis.text.y=element_text(size=11), strip.text.x = element_text(size=13))+
+    xlab("")+ylab("")+
+  #scale_y_continuous(breaks = c(seq(1000,14000,1000)), 
+  #                                                      labels =  c(seq(1000,14000,1000)),
+  #                                                      limits = c(0,14000))+
+    ggtitle("Transcriptome samples")
+  
+  p2 <- ggplot(data=df, aes(x=sampleNames, y=vdjBs, fill=sampleAttributes)) +
+    geom_bar(stat="identity")+
+    facet_wrap( ~ donorID, scales='free_x', nrow = 1)+
+    scale_fill_manual(values = colorRampPalette(brewer.pal(200, "Dark2"))(length(unique(sampleAttributes))))+
+    theme_bw()+
+    theme(axis.text.x = element_blank(), axis.text.y=element_text(size=11), strip.text.x = element_text(size=13))+
+    xlab("")+ylab("")+
+    #scale_y_continuous(breaks = c(seq(1000,14000,1000)), 
+    ##                                                    labels =  c(seq(1000,14000,1000)),
+    ##                                                    limits = c(0,14000))+
+    ggtitle("V(D)J samples")
+  
+  p3 <- ggplot(data=df, aes(x=sampleNames, y=numberOfMatchingCells, fill=sampleAttributes)) +
+    geom_bar(stat="identity")+
+    facet_wrap( ~ donorID, scales='free_x', nrow = 1)+
+    scale_fill_manual(values = colorRampPalette(brewer.pal(200, "Dark2"))(length(unique(sampleAttributes))))+
+    theme_bw()+
+    theme(axis.text.x=element_text(angle = 90, hjust = 1),
+          axis.text.y=element_text(size=11),
+          strip.text.x = element_text(size=13))+
+    xlab("")+ylab("")+
+    #scale_y_continuous(breaks = c(seq(1000,11000,1000)), 
+    #                                                    labels =  c(seq(1000,11000,1000)),
+    #                                                    limits = c(0,11000))+
+    ggtitle("Matched samples")
+  
+  plot_grid(p1, p2, p3, nrow=3, rel_heights = c(2,2,3))
+```
+

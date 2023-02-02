@@ -1,0 +1,75 @@
+---
+title: "Overlap of the per sample clones with the per donor clones"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("treeio")
+library("ggtree")
+library("phytools")
+library(alakazam)
+library(igraph)
+library(dplyr)
+library("Rphylip")
+
+library(network)
+library(sna)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+dnapars_exec <- "/Users/beraslan/Programs/phylip-3.695/exe/dnapars.app/Contents/MacOS/dnapars"
+rownames(samples) <- samples$SampleNames
+```
+
+In this analysis we find the explanded clones in "less-inflamed" samples and position those cells in the corresponding big clonal lineage tree of the donor which consists of the cells coming from both inflamed and less-inflamed samples. For this purpose:
+
+* The expanded clones of the less-inflamed samples are found (technical replicates are merged beforehand).
+* Top 30 clones which has at least 4 cells are selected.
+* One example cell from each clone is selected.
+* The clone of the example cell is positioned among all of the clones of the "donor".
+* This resulting tree is plotted.
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=8}
+for(elem in c("UC6RINF", "UC6RN1","UC10Inf","UC10Noninf", "UC15RectINF","UC15LCNONINF", "UC15RCNONINF", "UC16InfLCINF", "UC16InfTC","UC16NinfCecum" ,"UC17RCNINF", "UC17RNINF", "UC17RINF", "UC18Cec", "UC18Tc", "UC18Sig", "UC18SCD", "UC20Cec", "UC20Right", "UC20Trans", "UC20Left", "UC20Rect")){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/MergedVDJReplicates/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones)
+  
+  topClones <- unique(inClones$CLONE)
+  topClones <- topClones[1:min(length(topClones), 30)]
+  
+  
+  donorS <- unique(samples[samples$CanonicalSampleName == elem, "DonorID"])
+  donorClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",donorS,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  donorClones <- prepareClones(donorClones)
+
+  
+  for(cloneID in topClones){
+    
+      par(mfrow=c(1,2))
+
+      print(paste0("##############################  ",elem, " clone ", cloneID, "  ##############################"))
+      sub_db <- subset(inClones, CLONE == cloneID)
+      cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F)
+      plotClone(cloneInfo, titleStr=paste0(elem, " clone ", cloneID))
+  
+      exampleCell <- unlist(sub_db[1,"CELL"])
+      
+      cellInd <- grep(exampleCell, donorClones$CELL)
+      donorClone <- donorClones[cellInd,"CLONE"]
+      donor_clone <- subset(as.data.frame(donorClones), CLONE == donorClone)
+      
+      if(nrow(sub_db) > 4){
+        donorCloneInfo <- generateLineageClone(donor_clone, mergeWithTranscriptome = F)
+        plotClone(donorCloneInfo, titleStr=paste0("Donor ",donorS, " clone ", donorClone))
+      }
+  }
+}
+```

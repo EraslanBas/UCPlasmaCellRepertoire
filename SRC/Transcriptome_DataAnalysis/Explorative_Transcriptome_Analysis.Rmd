@@ -1,0 +1,147 @@
+---
+title: "Explorative Analysis"
+output: html_document
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  source("Main.R")
+
+  samples <- readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+  IG_genes <- read.csv(paste0(dataDir,"IG_Genes.txt"), sep = '\t')
+  BCellMarkers <- read.csv(paste0(dataDir, "CellMarker.csv"))
+  BCellMarkers <- BCellMarkers[BCellMarkers$Species=="Human",]
+  BCellMarkers <- BCellMarkers[BCellMarkers$Tissue != "Undefined",]
+  BCellMarkers$Cell.Type <- as.character(BCellMarkers$Cell.Type)
+  
+  cellMarkersSplit <- split(BCellMarkers, BCellMarkers$Cell.Type)
+  cellTypeMarkers <- lapply(cellMarkersSplit, function(x){
+    paste(unique(unlist(strsplit(as.character(unlist(x$Cell.Marker)), ", "))), collapse = ", ")
+  })
+  cellTypeM <- do.call(rbind, cellTypeMarkers)
+  colnames(cellTypeM) <- "MarkerGenes"
+  write.csv(cellTypeM, paste0(dataDir, "/CellTypeMarkers.csv"))
+  
+  BCellTypeMarkers <- BCellMarkers[BCellMarkers$Cell.Type != "B cell",]
+  BCellTypeMarkers <- split(BCellTypeMarkers, BCellTypeMarkers$Cell.Type)
+
+  BCellTypeMarkers <- do.call(rbind, BCellTypeMarkers)
+  
+ 
+  df <- data.frame(bCellType=names(unlist(rdsysM)), markerGene=unlist(rdsysM), stringsAsFactors = F)
+  df$bCellType <- sapply(df$bCellType, function(x){gsub("[0-9\\.]", "", x) })
+  write.csv(df, file = paste0(dataDir,"/BcellTypes.csv "), row.names = F, quote = F) 
+  # markerGenes <- unique(unlist(strsplit(as.character(unlist(BCellTypeMarkers$Cell.Marker)), ", ")))
+  markerGenes <- table(unlist(rdsysM))
+  markerGenes <- markerGenes[markerGenes<2]
+  markerGenes <- names(markerGenes)
+```
+
+
+```{r, fig.height=22, fig.width=22}
+    
+  #   for(serObj in samples){
+  #     
+  #     serObjGenes <- rownames(serObj[["RNA"]])
+  #     
+  #     for(elem in as.character(unique(IG_genes$Gene.type))){
+  #       print(elem)
+  #       geneNames <- as.character(IG_genes[IG_genes$Gene.type==elem, "Gene.name"])
+  #       geneNames <- geneNames[geneNames %in% serObjGenes]
+  #       if(length(geneNames) > 0){
+  #         print(DoHeatmap(serObj, features = geneNames, slot="data")+  
+  #               scale_fill_gradient(low="pink", high="darkgreen", guide="colorbar")+
+  #               theme(axis.text = element_text( size=14)))
+  #       }
+  #     }
+  #   
+  #     vdgcGenes <- IG_genes[IG_genes$Gene.type %in% c("IG_V_gene", "IG_D_gene", "IG_C_gene", "IG_J_gene"), ]
+  #     serObjIgGenes <- serObj[rownames(serObj[["RNA"]]) %in% vdgcGenes$Gene.name,]
+  #     
+  #     M <- cor(as.matrix(t(GetAssayData(serObjIgGenes))), method = "spearman")
+  #     
+  #     print("Covariance plot of Immunoglobulin genes")
+  #     corrplot(M, method = "circle")
+  #     
+  #     ### Plot marker gene expression levels
+  # }
+  #   
+```
+
+Expression levels of unique B cell marker genes (i.e. specific to only one type of B cell)
+
+```{r, fig.height=4, fig.width=8}
+  for(serObj in samples){
+     print("###############")
+     print(paste0("Marker genes expression of ", serObj@project.name))
+     x <- as.matrix(GetAssayData(serObj, slot = "data"))
+     #x[x>6] <- 6
+     
+      mTemp <- markerGenes[markerGenes %in% rownames(x)]
+     
+      if(length(mTemp) > 2){
+          xTemp <- x[mTemp,]
+          xTemp2 <- x[rownames(x) %in% c("CD19","CD27","CD38", "CD20", "CXCR4"),]
+          
+          dfT <- df[df$markerGene %in% rownames(xTemp),]
+          rownames(dfT) <- dfT$markerGene
+          rownames(xTemp) <- paste0( rownames(xTemp), "_", dfT[rownames(xTemp), "bCellType"] )
+          
+          rownames(xTemp2) <- paste0( rownames(xTemp2), "_Plasmacells")
+          xTemp <- rbind(xTemp,xTemp2)
+          
+          xTemp[xTemp>4] <- 4
+          print(pheatmap(xTemp,
+                treeheight_row = 0,
+                treeheight_col = 0,
+                show_colnames = F,
+                fontsize_row = 7, main=serObj@project.name, cluster_rows = F, legend = F))
+      }
+
+  }
+```
+
+
+```{r, fig.height=7, fig.width=7}
+    for(serObj in samples){
+      print(paste0("##################### ",serObj@project.name, " #####################" ))
+
+      serObj <- serObj[rownames(serObj[["RNA"]]) %ni% c(as.character(IG_genes$Gene.name),"CH17-262H11.1", "AC233755.1","CH17-212P11.4", "AC233755.2", "CH17-224D4.1"),]
+
+      ### Find highly variable genes after applying a variance stabilizing transformation.
+      serObj <- FindVariableFeatures(serObj, selection.method = "vst", nfeatures = 2000)
+
+      # Identify the 10 most highly variable genes
+      #top10 <- head(VariableFeatures(serObj), 30)
+
+      # plot variable genes with labels
+      #plot1 <- VariableFeaturePlot(serObj)
+      #plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+      #print(plot2)
+
+
+      serObjScaled <- ScaleData(serObj, verbose = FALSE, do.scale = F)
+      serObjScaled <- RunPCA(serObjScaled, npcs = 50, verbose = FALSE)
+
+      # print(DimHeatmap(serObjScaled, dims = 1:10, balanced = TRUE)+
+      #         scale_fill_gradient2(low="darkblue", high="darkgreen", guide="colorbar"))
+
+
+      serObjScaled <- FindNeighbors(serObjScaled, dims = 1:50)
+      serObjScaled <- FindClusters(serObjScaled, resolution = 0.3)
+
+      serObjScaled <- RunTSNE(serObjScaled, dims = 1:50)
+      print(DimPlot(serObjScaled, reduction = "tsne")+ggtitle(serObj@project.name))
+
+      obj.markers <- FindAllMarkers(serObjScaled, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.5)
+
+      top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+      print(top10)
+      print(DoHeatmap(serObjScaled, features = top10$gene) + NoLegend()+theme(axis.text.y = element_text(size = 8)))
+
+      print(paste0("###############################################" ))
+
+    }
+
+```
+

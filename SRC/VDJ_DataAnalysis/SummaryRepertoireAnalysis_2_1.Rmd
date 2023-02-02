@@ -1,0 +1,162 @@
+---
+title: "Summarized Repertoire Analysis 2"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  df=data.frame( sampleNames=samples$SampleNames,
+                 sampleAttributes=samples$SampleAttributesPrint,
+                 donorID=samples$DonorID,
+                 CanonicalSampleName = samples$CanonicalSampleName,
+                 stringsAsFactors = F)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+
+```
+
+```{r}
+plotAAChemicalBoxplot <- function(contigs, xA, yA, YLStr, lYH){
+   
+   contigs <- contigs[contigs$C_CALL_General %in% c("IGHM", "IGHA", "IGHG"),]
+   contigs$SAMPLETYPEPRINT <- factor(contigs$SAMPLETYPEPRINT,
+                                levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+   contigs$C_CALL_General <- factor(contigs$C_CALL_General, levels = c("IGHA", "IGHG", "IGHM"))
+   
+   cList = list(c("IGHG", "IGHA"), c("IGHA", "IGHM"), c("IGHG", "IGHM"))
+   p1 <- ggboxplot(contigs, x = "C_CALL_General", y = yA,
+          fill = "C_CALL_General",remove = "point", add="mean",add.params = list(color = "red"),
+          size = 0.1, bxp.errorbar = T)+
+          facet_wrap(~SAMPLETYPEPRINT, nrow = 1)+
+          stat_compare_means(method="t.test",
+                                comparisons = cList,paired=F,
+                                color="red",
+                                label.y= lYH, aes(label = ..p.signif..))+
+     xlab("")+ylab(YLStr)+ylim(c(min(contigs[,yA])-0.02, max(lYH) + 0.1))+
+     scale_fill_brewer(palette = "Accent")+
+     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15))
+   
+   
+   cList2 = list(c("UC Inflamed",  "Healthy"), c("UC Inflamed", "UC Non-Inflamed"), c("UC Inflamed",  "UC Less Inflamed"),
+                 c("UC Non-Inflamed", "Healthy"))
+   
+   p2 <- ggboxplot(contigs, x = "SAMPLETYPEPRINT", y = yA,
+          fill = "SAMPLETYPEPRINT",remove = "point",add="mean",add.params = list(color = "red"),
+          size = 0.1, bxp.errorbar = T)+
+          facet_wrap(~C_CALL_General, nrow = 1)+
+          stat_compare_means(method="t.test",paired=F,
+                                comparisons = cList2,
+                                color="red",
+                                label.y= lYH, aes(label = ..p.signif..))+
+     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+     xlab("")+ylab(YLStr)+ylim(c(min(contigs[,yA])-0.02, max(lYH) + 0.1))+
+     scale_fill_brewer(palette = "Pastel1")+
+     theme(legend.position = "None")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=16),
+              axis.title =  element_text(size=16),strip.text = element_text(size=18),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+   
+   return(list(p1=p1,p2=p2))
+}
+```
+
+```{r}
+allClones = combineAllClones(minNumCells=0)
+aaProbsAll <- data.frame()
+
+for( elem in c("UC_INF", "UC_LessINF", "UC_NonINF", "Healthy")){
+    allClonesTemp <- allClones[allClones$SAMPLETYPE == elem,]
+    
+    
+    for(sName in unique(allClonesTemp$SAMPLENAME)){
+      
+      allContigs <- allClonesTemp[allClonesTemp$SAMPLENAME == sName,]
+      aaProbs <- aminoAcidProperties(allContigs, seq="JUNCTION", nt=TRUE, trim=TRUE, label="CDR3")
+      aaProbs$JUNCTION_aa <-  sapply(aaProbs$JUNCTION,
+                                 function(x){paste(translate( s2c(x)), collapse = "")})
+  
+
+      aaProbs$CDR3_posChargeNo <- sapply(aaProbs$JUNCTION, function(x){ 
+                                          k <- translate(s2c(x))
+                                          return(length(which(charge(k[2:(length(k)-1)] ) > 0)) )
+                                          } )
+      aaProbs$sampleType <- elem
+      aaProbsAll <- rbind(aaProbsAll, aaProbs)
+    }
+  
+}
+
+  
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+  k <- plotAAChemicalBoxplot(contigs = aaProbsAll,
+                        yA="CDR3_aa_length",
+                        YLStr="CDR3 AA Length",
+                        lYH=c(30,35,40,45))
+  
+  #pdf(file = paste0(dataDir,"/SummaryFigures/CDR3Length_2.pdf"), width = 15, height = 10)
+  plot_grid(plotlist = list(k$p1,k$p2), ncol = 1, label_y = "")
+  #dev.off()
+
+  k <-plotAAChemicalBoxplot(aaProbsAll,
+                        yA="CDR3_aa_charge",
+                        YLStr="CDR3 AA Charge",
+                        lYH=c(5,7,9,11))
+  
+  #pdf(file = paste0(dataDir,"/SummaryFigures/CDR3AACharge_2.pdf"), width = 15, height = 10)
+  plot_grid(plotlist = list(k$p1,k$p2), ncol = 1, label_y = "")
+  #dev.off()
+  
+  k <-plotAAChemicalBoxplot(aaProbsAll,
+                        yA="CDR3_aa_gravy",
+                        YLStr="CDR3 AA Hydrophobicity",
+                        lYH=c(4,5,6, 7))
+  
+  #pdf(file = paste0(dataDir,"/SummaryFigures/CDR3AAHydrophobicity_2.pdf"), width = 15, height = 10)
+  plot_grid(plotlist = list(k$p1,k$p2), ncol = 1, label_y = "")
+  #dev.off()
+  
+  k <-plotAAChemicalBoxplot(aaProbsAll,
+                        yA="CDR3_aa_basic",
+                        YLStr="CDR3 Basic Residues",
+                        lYH=c(0.4,0.5,0.6, 0.7)) 
+  
+  #pdf(file = paste0(dataDir,"/SummaryFigures/CDR3BasicResidues_2.pdf"), width = 15, height = 10)
+  plot_grid(plotlist = list(k$p1,k$p2), ncol = 1, label_y = "")
+  #dev.off()
+  
+  k <-plotAAChemicalBoxplot(aaProbsAll,
+                        yA="CDR3_aa_polarity",
+                        YLStr="CDR3 Polarity",
+                        lYH=c(10,12,14, 16)) 
+  
+  #pdf(file = paste0(dataDir,"/SummaryFigures/CDR3AAPolarity_2.pdf"), width = 15, height = 10)
+  plot_grid(plotlist = list(k$p1,k$p2), ncol = 1, label_y = "")
+  #dev.off()
+  
+  k <-plotAAChemicalBoxplot(aaProbsAll,
+                        yA="CDR3_aa_acidic",
+                        YLStr="CDR3 Acidic Residues",
+                        lYH=c(0.7,0.8,0.9)) 
+  
+  #pdf(file = paste0(dataDir,"/SummaryFigures/CDR3AcidicResidues_2.pdf"), width = 15, height = 10)
+  plot_grid(plotlist = list(k$p1,k$p2), ncol = 1, label_y = "")
+  #dev.off()
+
+```
+

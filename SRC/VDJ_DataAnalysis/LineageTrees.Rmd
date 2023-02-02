@@ -1,0 +1,101 @@
+---
+title: "Plot lineage trees 2"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("treeio")
+library("ggtree")
+library("phytools")
+library(alakazam)
+library(igraph)
+library(dplyr)
+library("Rphylip")
+```
+
+```{r}
+ 
+df=data.frame( sampleNames=sampleNames,
+                 sampleAttributes=sampleAttributesPrint,
+                 donorID=as.factor(donorID), stringsAsFactors = F)
+
+
+```
+
+```{r}
+plotClone <- function(sub_db){
+   clone <- makeChangeoClone(sub_db, germ = "GERMLINE_IMGT", text_fields=c("C_CALL_General"), pad_end = T)
+   dnapars_exec <- "/Users/beraslan/Programs/phylip-3.695/exe/dnapars.app/Contents/MacOS/dnapars"
+
+   graph <- buildPhylipLineage(clone, dnapars_exec, rm_temp=TRUE)
+   
+   V(graph)$color <- "steelblue"
+   V(graph)$color[V(graph)$name == "Germline"] <- "black"
+   V(graph)$color[V(graph)$C_CALL_General == "IGHG"] <- "steelblue"
+   V(graph)$color[V(graph)$C_CALL_General == "IGHA"] <- "orange"
+   V(graph)$color[grepl("Inferred", V(graph)$name)] <- "white"
+   V(graph)$label <- V(graph)$COLLAPSE_COUNT
+   
+   print(plot(graph, layout=layout_as_tree, edge.arrow.mode=0, vertex.frame.color="black",
+     vertex.label.color="black", vertex.size=40))
+   # Add legend
+   print(legend("topleft", c("Germline", "Inferred", "IGHG", "IGHA"), 
+       fill=c("black", "white", "steelblue", "orange"), cex=0.75))
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=5, fig.height=5}
+plotLineageTrees <- function(sampleName){
+  print(sampleName)
+   Clones <- as.data.table(read.table(paste0(dataDir,"/VDJ_Files/",sampleName,"/ChangeO/HeavyAA_Model/filtered_single_light_heavy_paired_clone-pass.tab"),
+                                      sep="\t",
+                                      header=TRUE,
+                                      stringsAsFactors = F))
+   Clones$Seq_Imgt_len <- sapply(Clones$SEQUENCE_IMGT, nchar)
+   Clones$Germ_Imgt_len <- sapply(Clones$GERMLINE_IMGT, nchar)
+   Clones <- Clones[Clones$Seq_Imgt_len == Clones$Germ_Imgt_len,]
+   Clones$C_CALL_General <- sapply(Clones$C_CALL, function(x){substr(x,1,4)})
+
+   Clones[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+   Clones <- Clones[order(-NumberOfClonalCells),]
+   Clones <- Clones[Clones$NumberOfClonalCells > 4,]
+      
+   sub_db <- subset(Clones, CLONE == as.numeric(Clones[1,"CLONE"]))
+   plotClone(sub_db)
+   
+   sub_db <- subset(Clones, CLONE == as.numeric(Clones[2,"CLONE"]))
+   plotClone(sub_db)
+   
+   sub_db <- subset(Clones, CLONE == as.numeric(Clones[3,"CLONE"]))
+   plotClone(sub_db)
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=5, fig.height=5}
+df=data.frame( sampleNames=sampleNames,
+                 sampleAttributes=sampleAttributesPrint,
+                 donorID=as.factor(donorID), stringsAsFactors = F)
+
+df <- df[df$sampleAttributes == "UC Inflamed",]
+
+plotLineageTrees(sampleName="UC6RINFA")
+  
+plotLineageTrees(sampleName="UC6RINFB")
+plotLineageTrees(sampleName="UC6RINFC")
+plotLineageTrees(sampleName="UC6RINFD")
+plotLineageTrees(sampleName="UC6RINFE")
+plotLineageTrees(sampleName="UC10InfA")
+plotLineageTrees(sampleName="UC10InfB")
+
+plotLineageTrees(sampleName="HC2_RCA")
+
+plotLineageTrees(sampleName="HC2_RCB")
+
+plotLineageTrees(sampleName="20190523_Prism2")
+plotLineageTrees(sampleName="20190523_Prism1")
+plotLineageTrees(sampleName="20190523_Prism3")
+
+```

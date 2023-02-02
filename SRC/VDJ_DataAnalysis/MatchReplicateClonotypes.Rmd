@@ -1,0 +1,72 @@
+---
+title: "Match Replicate Clonotypes"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+sampleNamesVDJ <- samples$SampleNames
+```
+
+```{r}
+generateCombinedInfo <- function(allClones){
+  allClones <- allClones[order(allClones$clonotype_id, allClones$chain, allClones$v_gene,allClones$cdr3),]
+
+  allClones <-  allClones[, ChainAll := do.call(paste, as.list(chain)), by = .(clonotype_id)]
+  allClones$ChainAll <- sapply(allClones$ChainAll, function(x){str_replace_all(x, pattern=" ", replacement="_")})
+
+  allClones <-  allClones[, v_geneAll := do.call(paste, as.list(v_gene)), by = .(clonotype_id)]
+  allClones$v_geneAll <- sapply(allClones$v_geneAll, function(x){str_replace_all(x, pattern=" ", replacement="_")})
+  
+  allClones <-  allClones[, j_geneAll := do.call(paste, as.list(j_gene)), by = .(clonotype_id)]
+  allClones$j_geneAll <- sapply(allClones$j_geneAll, function(x){str_replace_all(x, pattern=" ", replacement="_")})
+  
+  return(allClones)
+}
+```
+
+```{r}
+s <- as.data.table(table(samples$Replicates))
+s <- s[s$N>1,]
+
+for(elem in s$V1){
+  tt <- samples[samples$Replicates==elem,]
+  
+  ## Get reference sample
+  i= tt$SampleNames[[1]]
+  allClones <- as.data.table(read.csv(paste0(dataDir,"/VDJ_Files/",i,"/consensus_annotations.csv"), stringsAsFactors = F))
+  allClones <- generateCombinedInfo(allClones)
+  allClones$commonClonalID <- allClones$clonotype_id
+  write.csv(allClones, file = paste0(dataDir,"/VDJ_Files/",i,"/consensus_annotations_updated.csv"), row.names = F)
+  
+  temp <- unique(allClones[,c("ChainAll","v_geneAll", "j_geneAll","commonClonalID")])
+  
+  for(i in tt$SampleNames[2:length(tt$SampleNames)]){
+     allC <- as.data.table(read.csv(paste0(dataDir,"/VDJ_Files/",i,"/consensus_annotations.csv"), stringsAsFactors = F))
+     allC <- generateCombinedInfo(allC)
+     allC <- merge(allC, temp, by=c("ChainAll","v_geneAll","j_geneAll"), all.x=TRUE)
+     write.csv(allC, file = paste0(dataDir,"/VDJ_Files/",i,"/consensus_annotations_updated.csv"), row.names = F)
+  }
+}
+```
+
+
+
+
+
+
+
+
+
+

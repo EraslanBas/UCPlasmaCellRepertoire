@@ -1,0 +1,107 @@
+---
+title: "Clonal composition comparison across colon regions - Only expanded clones"
+output: html_document
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+rownames(samples) <- samples$SampleNames
+library(plyr)
+library(gtools)
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=4}
+calculateOverlapFreq <- function(inClones1, inClones2){
+  
+  k=0
+  cSize=30
+  percIntersect = c()
+  while( k < 1000){
+    s1 <- inClones1[sample(c(1:nrow(inClones1)), size = cSize, replace=F),]
+    s2 <- inClones2[sample(c(1:nrow(inClones2)), size = cSize, replace=F),]
+    
+    percIntersect <- c(percIntersect, (length( which(s1$CLONE %in% s2$CLONE)) / (cSize*2))*100 )
+    k <- k+1
+  }
+    
+  return(percIntersect)
+  
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=9}
+comp_pat= c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")
+
+for(elem in comp_pat){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 1)
+  
+  inClones <- data.table(inClones)
+  
+  inClones[,noRegCells := .N,by=sampleRegion]
+  inClones <- data.frame(inClones)
+  inClonesSelected <- inClones[(inClones$NumberOfRegionalClonalCells / inClones$noRegCells) > 0.01, ]
+
+  distinct_regions = list() 
+  
+  for(i in unique(inClonesSelected$sampleRegion)){
+    distinct_regions <- lappend(distinct_regions, inClonesSelected[inClonesSelected$sampleRegion == i,])
+  }
+  
+  names(distinct_regions) <- unique(inClonesSelected$sampleRegion)
+  
+  allDFs <- data.frame(stringsAsFactors = F)
+  
+  for(i in 1:(length(distinct_regions) )){
+    
+     myS1 <- distinct_regions[[i]]
+    
+     for(j in i:(length(distinct_regions))){
+        
+        myS2 <- distinct_regions[[j]]
+        
+        k <- calculateOverlapFreq(inClones1=myS1, inClones2=myS2)
+        tempDf = data.frame(percOverlap=k, i = names(distinct_regions)[i], j = names(distinct_regions)[j], stringsAsFactors = F)
+        allDFs <- rbind(allDFs, tempDf)
+     }
+  }
+  
+  allDFs$pairName <- paste0(allDFs$i, " vs. ",allDFs$j)
+  ss <- ddply(allDFs, "pairName", summarise, grp.mean=mean(percOverlap))
+  allDFs <- merge(allDFs, ss, by="pairName")
+  pNames <- as.character(unique(allDFs$pairName))
+  cListComb = combinations(n=length(pNames),r = 2, v=pNames, set=TRUE, repeats.allowed=FALSE)
+  
+
+  myClist = list()
+  
+  for(i in 1:nrow(cListComb)){
+    myClist <- lappend(myClist, c(cListComb[i,1], cListComb[i,2]))
+  }
+  
+  allDFs$pairName <- factor(allDFs$pairName)
+  
+  print(ggplot(allDFs, aes(y=percOverlap, x=pairName)) +
+      geom_violin(trim=FALSE, aes(fill=pairName))+
+      #geom_density(alpha=0.6)+
+      stat_summary(fun.data="mean_sdl", 
+                 geom="crossbar", width=0.2, color="red")+
+      stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+      stat_compare_means(method="wilcox.test",paired = FALSE,
+                                comparisons = myClist,
+                                color="red",
+                               aes(label = ..p.signif..))+
+      labs(x="", x = "Clonal overlap percentage (%)")+
+      theme_bw()+ggtitle(elem)+theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+}
+
+
+```
+

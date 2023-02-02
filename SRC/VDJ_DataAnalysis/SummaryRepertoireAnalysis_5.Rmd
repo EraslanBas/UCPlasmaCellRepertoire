@@ -1,0 +1,340 @@
+---
+title: "Summarized Repertoire Analysis 5"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  df=data.frame( sampleNames=samples$SampleNames,
+                 sampleAttributes=samples$SampleAttributesPrint,
+                 donorID=samples$DonorID,
+                 CanonicalSampleName = samples$CanonicalSampleName,
+                 stringsAsFactors = F)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+
+ df$colors <- "chocolate3"
+ df[df$sampleAttributes=="Healthy", "colors"] <- "black"
+ df[df$sampleAttributes=="UC Inflamed", "colors"] <- "red4"
+ df[df$sampleAttributes=="UC Non-Inflamed", "colors"] <- "green"
+ rownames(df) <- df$sampleNames
+```
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+getClonalDistribution <- function(inClones, sampleName, sampleType){
+  inClones <- as.data.table(inClones)
+  inClones[,NumberOfClonalCells := length(unique(CELL)),by=donorClone]
+  inClones <- inClones[order(-NumberOfClonalCells),]
+  datT <- unique(inClones[,c("donorClone","NumberOfClonalCells")])
+
+  datT$cloneType=""
+  datT[datT$NumberOfClonalCells == 1, "raw_clonotype_id"] <- "Single cell"
+  datT[datT$NumberOfClonalCells > 1 & datT$NumberOfClonalCells < 11 , "raw_clonotype_id"] <- "1 < Clonal Cells < 11"
+  datT[datT$NumberOfClonalCells > 10 & datT$NumberOfClonalCells < 50 , "raw_clonotype_id"] <- "10 < Clonal Cells < 50"
+  datT[datT$NumberOfClonalCells > 49  , "raw_clonotype_id"] <- "49 < Clonal Cells"
+  
+  
+  datT$sampleType = unique(inClones$SAMPLETYPEPRINT)
+  return(as.data.frame(datT))
+  
+}
+
+```
+
+```{r}
+allContigsCombined = combineAllClones(minNumCells=0)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+allClones <- data.frame(stringsAsFactors = F)
+igGClones <- data.frame(stringsAsFactors = F)
+igAClones <- data.frame(stringsAsFactors = F)
+igMClones <- data.frame(stringsAsFactors = F)
+
+for( elem in c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy")){
+    allContigsCombinedTemp <- allContigsCombined[allContigsCombined$SAMPLETYPEPRINT == elem,]
+    allContigsCombinedTemp$donorClone <- paste0(allContigsCombinedTemp$donorID,"_",allContigsCombinedTemp$CLONE)
+    
+    allClones <- rbind(allClones, getClonalDistribution(inClones=allContigsCombinedTemp))
+    igGClones <- rbind(igGClones, getClonalDistribution(inClones=allContigsCombinedTemp[allContigsCombinedTemp$C_CALL_General=="IGHG",]))
+    igAClones <- rbind(igAClones, getClonalDistribution(inClones=allContigsCombinedTemp[allContigsCombinedTemp$C_CALL_General=="IGHA",]))
+    igMClones  <- rbind(igMClones,  getClonalDistribution(inClones=allContigsCombinedTemp[allContigsCombinedTemp$C_CALL_General=="IGHM",]))
+}
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+generateSummaryDF <- function(clonesDF){
+  
+  clonesDFInflamed <- clonesDF[clonesDF$sampleType == "UC Inflamed",]
+  clonesDFLessInflamed <- clonesDF[clonesDF$sampleType == "UC Less Inflamed",]
+  clonesDFNonInflamed <- clonesDF[clonesDF$sampleType == "UC Non-Inflamed",]
+  clonesDFHealthy <- clonesDF[clonesDF$sampleType == "Healthy",]
+  
+  return(list(clonesDFInflamed=clonesDFInflamed,
+              clonesDFLessInflamed=clonesDFLessInflamed,
+              clonesDFNonInflamed=clonesDFNonInflamed,
+              clonesDFHealthy=clonesDFHealthy))
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+allIgList <- generateSummaryDF(allClones)
+IgGList <- generateSummaryDF(igGClones)
+IgAList <- generateSummaryDF(igAClones)
+IgMList <- generateSummaryDF(igMClones)
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+plotClonalPies <- function(clonesDFIn, titleStr){
+  clonesDFIn <- as.data.table(clonesDFIn)
+
+  clonesDFIn[,numberOfClones := .(.N),by=.(raw_clonotype_id)]
+  clonesDFIn[,totalNumberOfCells := sum(NumberOfClonalCells),by=.(raw_clonotype_id)]
+  
+  clonesDFIn$NumberOfClonalCells <- NULL
+  clonesDFIn$donorClone <- NULL
+  
+  
+  clonesDFIn <- unique(clonesDFIn)
+  
+  clonesDFIn$fraction = as.numeric(format(round(clonesDFIn$totalNumberOfCells / sum(clonesDFIn$totalNumberOfCells), 2), nsmall = 2))
+  clonesDFIn = clonesDFIn[order(clonesDFIn$totalNumberOfCells), ]
+  clonesDFIn$ymax = cumsum(clonesDFIn$fraction)
+  clonesDFIn$ymin = c(0, head(clonesDFIn$ymax, n=-1))
+  clonesDFIn$raw_clonotype_id <- factor(clonesDFIn$raw_clonotype_id , levels = c("Single cell",
+                                                                                 "1 < Clonal Cells < 11",
+                                                                                 "10 < Clonal Cells < 50",
+                                                                                 "49 < Clonal Cells"))
+  clonesDFIn$pieColors <- ""
+  clonesDFIn[clonesDFIn$raw_clonotype_id=="Single cell","pieColors"] <- "grey"
+  clonesDFIn[clonesDFIn$raw_clonotype_id=="1 < Clonal Cells < 11","pieColors"] <- "darkolivegreen3"
+  clonesDFIn[clonesDFIn$raw_clonotype_id=="10 < Clonal Cells < 50","pieColors"] <- "lightblue"
+  clonesDFIn[clonesDFIn$raw_clonotype_id=="49 < Clonal Cells","pieColors"] <- "red"
+  
+  clonesDFIn <- data.frame(clonesDFIn)
+  
+  p <- ggplot(clonesDFIn, aes(fill=raw_clonotype_id, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect() +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) + theme_void()+
+     theme(axis.ticks=element_blank(), legend.position = "bottom", legend.title = element_blank()) +
+     annotate("text", x = 0, y = 0, label = paste0(sum(clonesDFIn$totalNumberOfCells)), size=8) +
+     #scale_fill_manual(values = colorRampPalette(brewer.pal(200, "Dark2"))(nrow(clonesDFIn)))+
+     scale_fill_manual(values = rev(clonesDFIn$pieColors))+
+     labs(title="")+
+    geom_text(aes(label=numberOfClones,
+                  x=4,y=(ymin+ymax)/2),
+              inherit.aes = TRUE, show.legend = FALSE)+
+    ggtitle(titleStr)
+  
+  
+  return(p)
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+
+
+  p1 <- plotClonalPies(clonesDFIn=allIgList$clonesDFInflamed, titleStr=" UC Inflamed")
+  p1 <- p1 + theme(legend.position = "None") 
+  p2 <- plotClonalPies(allIgList$clonesDFLessInflamed, titleStr=" UC Less Inflamed")
+  p2 <- p2 + theme(legend.position = "None")
+  p3 <- plotClonalPies(allIgList$clonesDFNonInflamed, titleStr=" UC Non-Inflamed")
+  p3 <- p3 + theme(legend.position = "None")
+  p4 <- plotClonalPies(allIgList$clonesDFHealthy, titleStr=" Healthy")
+  p4 <- p4 + theme(legend.position = "None")
+  
+  
+  plot_grid(plotlist = list(p4,p3,p2,p1), nrow = 1, rel_widths = c(1,1,1,1))
+
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+
+
+  p1 <- plotClonalPies(IgGList$clonesDFInflamed, titleStr=" UC Inflamed - IgG ")
+  p2 <- plotClonalPies(IgGList$clonesDFLessInflamed, titleStr=" UC Less Inflamed - IgG ")
+  p3 <- plotClonalPies(IgGList$clonesDFNonInflamed, titleStr=" UC Non-Inflamed - IgG ")
+  p4 <- plotClonalPies(IgGList$clonesDFHealthy, titleStr=" Healthy - IgG ")
+  
+  plot_grid(plotlist = list(p4,p3,p2,p1), nrow = 1, rel_widths = c(1,1,1,1))
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=4}
+
+
+  p1 <- plotClonalPies(IgAList$clonesDFInflamed, titleStr=" UC Inflamed - IgA ")
+  p2 <- plotClonalPies(IgAList$clonesDFLessInflamed, titleStr=" UC Less Inflamed - IgA ")
+  p3 <- plotClonalPies(IgAList$clonesDFNonInflamed, titleStr=" UC Non-Inflamed - IgA ")
+  p4 <- plotClonalPies(IgAList$clonesDFHealthy, titleStr=" Healthy - IgA ")
+  
+  plot_grid(plotlist = list(p1,p2,p3,p4), nrow = 1)
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=12, fig.height=3}
+
+
+  p1 <- plotClonalPies(IgMList$clonesDFInflamed, titleStr=" UC Inflamed - IgM ")
+  p2 <- plotClonalPies(IgMList$clonesDFLessInflamed, titleStr=" UC Less Inflamed - IgM ")
+  p3 <- plotClonalPies(IgMList$clonesDFNonInflamed, titleStr=" UC Non-Inflamed - IgM ")
+  p4 <- plotClonalPies(IgMList$clonesDFHealthy, titleStr=" Healthy - IgM ")
+  
+  plot_grid(plotlist = list(p1,p2,p3,p4), nrow = 1)
+
+```
+
+
+q=0, q=1 and q=2 (equivalent to species richness, Shannon entropy,Simpson's index)
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+#shannonVals <- allClonalDiv[allClonalDiv$Q ==1,]
+#simpIndex <- allClonalDiv[allClonalDiv$Q ==2,]
+#shannonVals$sampleType <- factor(shannonVals$sampleType,
+#                                levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+
+#cList = list(c("UC Inflamed", "UC Less Inflamed"), c("UC Inflamed", "UC Non-Inflamed"), c("UC Non-Inflamed", "Healthy"),
+#              c("UC Inflamed", "Healthy"))
+
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+dfCan <- unique(df[,c("sampleAttributes", "donorID", "CanonicalSampleName", "colors")])
+rownames(dfCan) <- dfCan$CanonicalSampleName
+
+plotShannonAndSimpson <- function(x, titleStr, labelYP){
+  
+   x$sampleType <- dfCan[x$canonicalSampleName,"sampleAttributes"]
+   x$sampleType <- factor(x$sampleType,
+                                levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+   x$donorID <- dfCan[x$canonicalSampleName,"donorID"]
+
+   shannonVals <- as.data.frame(x[x$q ==1,])
+   simpIndex <- x[x$q ==2,]
+
+
+  shannonValsUC <- shannonVals[shannonVals$donorID %in% c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22"),]
+  
+ p0<-  ggboxplot(shannonValsUC, x = "sampleType", y = "d",
+          fill = "sampleType",remove = "point",
+          size = 0.1, bxp.errorbar = T)+
+    #facet_wrap(~donorID)+
+    stat_compare_means(method="wilcox.test",
+                                comparisons = list(c("UC Inflamed", "UC Less Inflamed")),paired=F,
+                                color="red",
+                                label.y= labelYP, aes(label = ..p.signif..),
+                             method.args = list(alternative = "less"))+
+     xlab("")+ylab("Shannon entrophy")+ylim(c(min(shannonVals[,"d"])-0.5, max(shannonVals[,"d"])+100))+
+     stat_summary(fun.data = n_fun, geom = "text", size=7)+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle(titleStr)
+  
+cList = list(c("UC Inflamed", "UC Less Inflamed"),
+             c("UC Inflamed", "UC Non-Inflamed"),
+             c("UC Non-Inflamed", "Healthy"),
+             c("UC Inflamed", "Healthy"))
+
+p1 <- ggboxplot(shannonVals, x = "sampleType", y = "d",
+          fill = "sampleType",remove = "point",
+          size = 0.1, bxp.errorbar = T)+
+          stat_compare_means(method="wilcox.test",
+                                comparisons = cList,paired=F,
+                                color="red",
+                                label.y= labelYP, aes(label = ..p.signif..),
+                             method.args = list(alternative = "less"))+
+     xlab("")+ylab("Shannon entrophy")+ylim(c(min(shannonVals[,"d"])-0.5, max(shannonVals[,"d"])+100))+
+     stat_summary(fun.data = n_fun, geom = "text", size=7)+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle(titleStr)
+
+p2 <- ggboxplot(simpIndex, x = "sampleType", y = "d",
+          fill = "sampleType",remove = "point", add="mean",add.params = list(color = "red"),
+          size = 0.1, bxp.errorbar = T)+
+          stat_compare_means(method="wilcox.test",
+                                comparisons = cList,paired=F,
+                                color="red",
+                                label.y= labelYP, aes(label = ..p.signif..),
+                             method.args = list(alternative = "less"))+
+     xlab("")+ylab("Simpson index")+ylim(c(min(shannonVals[,"d"])-1, max(shannonVals[,"d"])+3))+
+     stat_summary(fun.data = n_fun, geom = "text", size=5)+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle(titleStr)
+
+return(list(p0=p0,p1=p1,p2=p2))
+  
+}
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+allContigsCombined$canonicalSampleName <- samples[allContigsCombined$SAMPLENAME,"CanonicalSampleName"]
+allContigsCombined$canonicalSampleName_C_Call_Gen <- paste0(allContigsCombined$canonicalSampleName, "_", allContigsCombined$C_CALL_General)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+sample_curveA <- alphaDiversity(allContigsCombined, clone="CLONE", group="canonicalSampleName_C_Call_Gen",
+                                min_q=0, max_q=2, step_q=1,
+                                ci=0.95, nboot=400, min_n=10, )
+sample_curveA <- as.data.frame(sample_curveA@diversity)
+
+saveRDS(sample_curveA, paste0(dataDir,"/sample_curveA.rds"))
+
+sample_curveA$canonicalSampleName <- sapply(sample_curveA$canonicalSampleName_C_Call_Gen, 
+                                            function(x){strsplit(x, "_IG")[[1]][1]})
+
+sample_curveA$isotype<- sapply(sample_curveA$canonicalSampleName_C_Call_Gen, function(x){strsplit(x, "_IG")[[1]][2]})
+
+sample_curveIgHg <- sample_curveA[sample_curveA$isotype=="HG",]
+sample_curveIgHA <- sample_curveA[sample_curveA$isotype=="HA",]
+sample_curveIgHM <- sample_curveA[sample_curveA$isotype=="HM",]
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+sample_curve_my <- alphaDiversity(allContigsCombined, clone="CLONE",group="canonicalSampleName",
+                                min_q=0, max_q=2, step_q=1,
+                                ci=0.95, nboot=400, min_n=10)
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=3}
+p <- plotShannonAndSimpson(x = sample_curveIgHg, titleStr = "IgG Clones", labelYP = c(11.5,12,12.5,13))
+p$p1
+
+p <- plotShannonAndSimpson(sample_curveIgHA, "IgA Clones", labelYP = c(11.5,12,12.5,13))
+p$p1
+
+p <- plotShannonAndSimpson(sample_curveIgHM, "IgM Clones", c(11.5,12,12.5,13))
+p$p1
+
+p <- plotShannonAndSimpson(x=as.data.frame(sample_curve_my@diversity), "All clones", labelYP = c(450,470,480,490))
+p$p1
+p$p0
+```
+

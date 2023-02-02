@@ -1,0 +1,301 @@
+---
+title: "Figures 2A, 2B"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+getClonalDistribution <- function(inClones, donorID="", donorClone=FALSE){
+  
+  if(nrow(inClones) == 0)
+    return(NULL)
+  
+  inClones <- as.data.table(inClones)
+  
+  if(donorClone){
+    inClones[,NumberOfClonalCells := length(unique(CELL)),by=donorClone]
+    inClones <- inClones[order(-NumberOfClonalCells),]
+    datT <- unique(inClones[,c("donorClone","NumberOfClonalCells")])
+    colnames(datT) = c("CLONE","NumberOfClonalCells")
+  }else{
+    inClones[,NumberOfClonalCells := length(unique(CELL)),by=CLONE]
+    inClones <- inClones[order(-NumberOfClonalCells),]
+    datT <- unique(inClones[,c("CLONE","NumberOfClonalCells")])
+  }
+  
+  
+  
+
+  datT$CellLevel <- "1"
+  datT[datT$NumberOfClonalCells < 6 &  datT$NumberOfClonalCells > 1, "CellLevel"] <- "2 - 5"
+  datT[datT$NumberOfClonalCells < 11 &  datT$NumberOfClonalCells > 6, "CellLevel"] <- "6 - 10"
+  datT[datT$NumberOfClonalCells < 21 &  datT$NumberOfClonalCells > 10, "CellLevel"] <- "11 - 20"
+  datT[datT$NumberOfClonalCells < 31 &  datT$NumberOfClonalCells > 21, "CellLevel"] <- "21 - 30"
+  datT[datT$NumberOfClonalCells < 41 &  datT$NumberOfClonalCells > 31, "CellLevel"] <- "31 - 40"
+  datT[datT$NumberOfClonalCells < 51 &  datT$NumberOfClonalCells > 41, "CellLevel"] <- "41 - 50"
+  datT[datT$NumberOfClonalCells < 71 &  datT$NumberOfClonalCells > 51, "CellLevel"] <- "51 - 70"
+  datT[datT$NumberOfClonalCells < 91 &  datT$NumberOfClonalCells > 71, "CellLevel"] <- "71 - 90"
+  datT[datT$NumberOfClonalCells > 90, "CellLevel"] <- " > 90"
+  
+  datT$CellLevel <- factor(datT$CellLevel, levels = c("1", "2 - 5", "6 - 10", "11 - 20", "21 - 30",
+                                                "31 - 40", "41 - 50", "51 - 70", "71 - 90", " > 90"))
+   
+  
+  #datT[,numberOfClones := .(.N),by=.(CellLevel)]
+  datT[,totalNumberOfCells := sum(NumberOfClonalCells),by=.(CellLevel)]
+  datT$NumberOfClonalCells <- NULL
+  datT$CLONE <- NULL
+  
+  datT <- unique(datT)
+  datT <- data.frame(datT)
+  
+  datT <- datT[order(datT$CellLevel),]
+  datT$fraction = as.numeric(format(round(datT$totalNumberOfCells / sum(datT$totalNumberOfCells), 2), nsmall = 2))
+
+  datT = datT[order(-datT$CellLevel), ]
+
+  datT$ymax = cumsum(datT$fraction)
+  datT$ymin = c(0, head(datT$ymax, n=-1))
+  datT[nrow(datT),"ymax"] <- 1.0
+  
+  #datT <- datT[datT$fraction > 0.001,]
+  #datT$raw_clonotype_id <- factor(datT$raw_clonotype_id , levels = rev(as.character(datT$raw_clonotype_id) ))
+  datT$donorID = donorID
+  datT$sampleType = unique(inClones$SAMPLETYPEPRINT)
+  datT$numDonorCells <- sum(datT$totalNumberOfCells)
+  return(datT)
+  
+}
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+
+plotRepertoireAnalysis <- function(donorID){
+    allContigs <- read.table(paste0(dataDir,"/Subjects/",donorID,"/filtered_single_light_heavy_paired_clone-pass.tab"),
+                             sep="\t", header=TRUE, stringsAsFactors = F)
+    allContigs <- allContigs[allContigs$C_CALL != "",]
+    allContigs$C_CALL_General <- sapply(allContigs$C_CALL, function(x){substr(x,1,4)})
+    allContigs$C_CALL_LIGHT_General <- sapply(allContigs$C_CALL_LIGHT, function(x){substr(x,1,3)})
+    allContigs <- allContigs[allContigs$C_CALL_LIGHT_General %in% c("IGL", "IGK"),]
+    
+    pA <- getClonalDistribution(inClones = allContigs, donorID)
+   
+}
+
+allDat = data.frame() 
+
+for(donorID in levels(samples$DonorID)){
+  print(paste0("#################" ,donorID , "######################"))
+  allDat <- rbind(allDat, plotRepertoireAnalysis(donorID))
+  
+}
+
+
+
+```
+
+```{r}
+ allDat <- data.frame(allDat)
+ allDat$donorID <- factor(allDat$donorID, levels = c("Healthy1","Healthy2","Healthy3","Healthy4","Healthy5","Healthy7", "Healthy8", "Healthy9", "UC3", "UC10", "UC15", "UC16", "UC17", "UC18", "UC20", "UC22", "UC4", "UC9", "UC14", "UC19", "UC23"))
+ 
+```
+
+```{r fig.width=8, fig.height=6}
+ allDat$CellLevel <- factor(allDat$CellLevel, levels = c("1", "2 - 5", "6 - 10", "11 - 20", "21 - 30",
+                                                "31 - 40", "41 - 50", "51 - 70", "71 - 90", " > 90"))
+   
+ allDat <- allDat[order(allDat$donorID,allDat$CellLevel),]
+ 
+ pdf(file = "./PDFFigures/Fig2A.pdf", width = 11,  height = 7) 
+ 
+ ggplot(allDat, aes(fill=CellLevel, ymax=ymax, ymin=ymin, xmax=5, xmin=2)) +
+     geom_rect() +
+     facet_wrap(~donorID, ncol = 8)+
+     coord_polar(theta="y") +
+     xlim(c(0, 5)) +
+     theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) + theme_void()+
+     theme(axis.ticks=element_blank(), legend.title = element_blank(), legend.position = "top",
+           strip.text = element_text(size=20)) +
+     #annotate("text", x = 0, y = 0, aes(label = numDonorCells), size=8) +
+     geom_text(aes(label=numDonorCells,x=0,y=0),inherit.aes = TRUE, show.legend = FALSE, size=7)+
+     #scale_fill_manual(values = rev(colorRampPalette(brewer.pal(200, "RdYlBu"))(length(unique(allDat$CellLevel)))))+
+     scale_fill_manual(values = c("lightgrey", "darkgrey", "#FEEDA4", "gold","#FDBE70", "darkorange","#F67B49", 
+                                  "orangered","#DA362A", "#A50026"))+
+     labs(title="")
+     #geom_text(aes(label=numberOfClones,x=4,y=(ymin+ymax)/2),inherit.aes = TRUE, show.legend = FALSE)
+ 
+ dev.off()
+  
+ 
+```
+
+
+
+
+```{r}
+allContigsCombined = combineAllClones(minNumCells=0)
+
+saveRDS(allContigsCombined, paste0(dataDir, "/RDSFiles/allContigsCombined.rds"))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+allClones <- data.frame(stringsAsFactors = F)
+
+for( elem in c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy")){
+    allContigsCombinedTemp <- allContigsCombined[allContigsCombined$SAMPLETYPEPRINT == elem,]
+    allContigsCombinedTemp$donorClone <- paste0(allContigsCombinedTemp$donorID,"_",allContigsCombinedTemp$CLONE)
+    
+    allClones <- rbind(allClones, getClonalDistribution(inClones=allContigsCombinedTemp, donorClone=TRUE))
+}
+
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=5, fig.height=2}
+allClones$CellLevel <- factor(allClones$CellLevel, levels = c("1", "2 - 5", "6 - 10", "11 - 20", "21 - 30",
+                                                "31 - 40", "41 - 50", "51 - 70", "71 - 90", " > 90"))
+   
+allClones$sampleType <- factor(allClones$sampleType, levels = c("Healthy", "UC Non-Inflamed", "UC Less Inflamed", "UC Inflamed"))
+
+pdf(file = "./PDFFigures/Fig2A_2.pdf", width = 11,  height = 7) 
+ ggplot(allClones, aes(fill=CellLevel, ymax=ymax, ymin=ymin, xmax=5, xmin=2)) +
+     geom_rect() +
+     facet_wrap(~sampleType, ncol = 8)+
+     coord_polar(theta="y") +
+     xlim(c(0, 5)) +
+     theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) + theme_void()+
+     theme(axis.ticks=element_blank(), legend.title = element_blank(), legend.position = "top",
+           strip.text = element_text(size=20)) +
+     #annotate("text", x = 0, y = 0, aes(label = numDonorCells), size=8) +
+     geom_text(aes(label=numDonorCells,x=0,y=0),inherit.aes = TRUE, show.legend = FALSE, size=7)+
+     #scale_fill_manual(values = rev(colorRampPalette(brewer.pal(200, "RdYlBu"))(length(unique(allDat$CellLevel)))))+
+     scale_fill_manual(values = c("lightgrey", "darkgrey", "#FEEDA4", "gold","#FDBE70", "darkorange","#F67B49", 
+                                  "orangered","#DA362A", "#A50026"))+
+     labs(title="")
+     #geom_text(aes(label=numberOfClones,x=4,y=(ymin+ymax)/2),inherit.aes = TRUE, show.legend = FALSE)
+dev.off()
+ 
+```
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+allContigsCombined$canonicalSampleName <- samples[allContigsCombined$SAMPLENAME,"CanonicalSampleName"]
+allContigsCombined$canonicalSampleName_C_Call_Gen <- paste0(allContigsCombined$canonicalSampleName, "_", allContigsCombined$C_CALL_General)
+allContigsCombined$donorClone <- paste0(allContigsCombined$donorID, "_", allContigsCombined$CLONE)
+# 
+# sample_curve_my <- alphaDiversity(allContigsCombined, clone="donorClone",group="canonicalSampleName",
+#                                 min_q=1, max_q=2, step_q=1,
+#                                 ci=0.95, nboot=1000, min_n=300)
+# 
+# saveRDS(sample_curve_my, paste0(dataDir,"/RDSFiles/sample_curve_my.rds"))
+
+myentropy <- function(target) {
+  freq <- table(target)/length(target)
+  # vectorize
+  vec <- as.data.frame(freq)[,2]
+  #drop 0 to avoid NaN resulting from log2
+  vec<-vec[vec>0]
+  #compute entropy
+  -sum(vec * log2(vec))
+}
+
+allShannonVals <- list()
+
+for(elem in unique(allContigsCombined$canonicalSampleName)){
+   myTmp <- allContigsCombined[allContigsCombined$canonicalSampleName == elem,]
+   
+   #allShannonVals <- lappend(allShannonVals, c(canonicalSampleName=elem, shannonVal =shannon.entropy(myTmp$CLONE)))
+   
+   if(nrow(myTmp) > 4000){
+      for(i in 1:5000){
+          myTmpSample <- myTmp[sample(1:nrow(myTmp), 500, replace=FALSE),]
+          allShannonVals <- lappend(allShannonVals, c(canonicalSampleName=elem, shannonVal =myentropy(myTmpSample$CLONE)))
+      }
+   }else{
+      for(i in 1:1000){
+          myTmpSample <- myTmp[sample(1:nrow(myTmp), 500, replace=FALSE),]
+          allShannonVals <- lappend(allShannonVals, c(canonicalSampleName=elem, shannonVal =myentropy(myTmpSample$CLONE)))
+      }
+   }
+}
+
+allShannonVals <- as.data.frame(do.call(rbind, allShannonVals))
+allShannonVals$shannonVal <- as.numeric(allShannonVals$shannonVal)
+saveRDS(allShannonVals, paste0(dataDir,"/RDSFiles/allShannonVals.rds"))
+
+allShannonVals <- readRDS(paste0(dataDir,"/RDSFiles/allShannonVals.rds"))
+```
+
+
+
+```{r}
+
+   df=data.frame( sampleNames=samples$SampleNames,
+                   sampleAttributes=samples$SampleAttributesPrint,
+                   donorID=samples$DonorID,
+                   CanonicalSampleName = samples$CanonicalSampleName,
+                   stringsAsFactors = F)
+   df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+  
+   dfCan <- unique(df[,c("sampleAttributes", "donorID", "CanonicalSampleName")])
+   rownames(dfCan) <- dfCan$CanonicalSampleName
+  
+   x=allShannonVals
+   x$shannonVal <- x$shannonVal/100
+   x$sampleType <- dfCan[x$canonicalSampleName,"sampleAttributes"]
+   x$sampleType <- factor(x$sampleType,
+                                levels = c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"))
+   x$donorID <- dfCan[x$canonicalSampleName,"donorID"]
+
+   #shannonVals <- as.data.frame(x[x$q ==0,])
+   #simpIndex <- x[x$q ==2,]
+
+  
+ 
+
+
+
+```
+
+```{r fig.width=4, fig.height=3}
+cList = list(c("UC Inflamed", "UC Less Inflamed"),
+             c("UC Inflamed", "UC Non-Inflamed"),
+             c("UC Non-Inflamed", "Healthy"),
+             c("UC Inflamed", "Healthy"))
+
+pdf(file = "./PDFFigures/Fig2B.pdf", width = 7,  height = 5) 
+ ggboxplot(x, x = "sampleType", y = "shannonVal",
+          fill = "sampleType",remove = "point",
+          size = 0.1, bxp.errorbar = T)+
+          stat_compare_means(method="t.test",
+                                comparisons = cList,paired=F,
+                                color="red",
+                                label.y= c(405,430,460,490), aes(label = ..p.signif..),
+                             method.args = list(alternative = "less"))+
+     xlab("")+ylab("Shannon entropy")+
+     ylim(0, 550)+
+     #stat_summary(fun.data = n_fun, geom = "text", size=7)+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+ dev.off()
+  
+```
+
+

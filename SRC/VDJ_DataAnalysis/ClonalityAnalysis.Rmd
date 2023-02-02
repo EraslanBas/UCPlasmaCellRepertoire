@@ -1,0 +1,355 @@
+---
+title: "Clonality analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+sampleNamesVDJ <- samples$SampleNames
+```
+
+Summary plots of clonotypes:
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10}
+
+dfAll = data.frame(barcode=character(),
+                   contig_id=character(),
+                   chain=character(),
+                   v_gene=character(),
+                   d_gene=character(),
+                   j_gene=character(),
+                   c_gene=character(),
+                   cdr3=character(),
+                   cdr3_nt=character(),
+                   raw_clonotype_id=character(),
+                   SampleNames=character(),
+                   SampleAttribute=character())
+
+for(elem in 1:length(sampleNamesVDJ)){
+  allContigs <- read.csv(paste0(dataDir,"/VDJ_Files/",sampleNamesVDJ[[elem]],"/filtered_contig_annotations.csv"), stringsAsFactors = F)
+  allContigs <- allContigs[allContigs$chain %in% c("IGK","IGL","IGH"),]
+  df <- allContigs[,c("barcode", "contig_id", "chain", "v_gene","d_gene","j_gene","c_gene","cdr3","cdr3_nt","raw_clonotype_id")]
+    df$SampleNames <- sampleNamesVDJ[[elem]]
+  df$SampleAttribute <- samples[elem, "SampleAttributes"]
+  dfAll <- rbind(dfAll, df)
+}
+```
+
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=24, fig.height=16}
+  cellsOfClonotype <- data.table(unique(dfAll[dfAll$raw_clonotype_id != "None",]))
+  
+  z <- cellsOfClonotype[, length(unique(barcode)), by = .(SampleNames,raw_clonotype_id)]
+  z <- merge(z, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+
+  plotClonotypeCellDist <- function(inDF, titleStr, intRan){
+   inDF <- inDF[inDF$V1 > 3,]
+   sampleNamesOrder <- unique(inDF$SampleNames)
+   inDF$SampleNames <- factor(inDF$SampleNames, levels=sampleNamesOrder)
+   
+   inDF <- inDF[order(SampleNames,-V1),]
+   inDF$raw_clonotype_id <- paste0(inDF$SampleNames,"_",inDF$raw_clonotype_id)
+   inDF$raw_clonotype_id <- factor(inDF$raw_clonotype_id, levels=inDF$raw_clonotype_id)
+   
+   a <-  ggplot(inDF, aes(x=raw_clonotype_id, y=V1)) +
+         geom_bar(stat="identity", color="black", fill="yellow", position = position_dodge())+
+         ylab("Number of cells")+ggtitle(titleStr)+
+         xlab("Clonotypes")+
+         facet_wrap(~SampleNames, nrow = 1,scales="free_x")+ theme_bw(base_size = 4)+
+         scale_y_continuous(breaks = seq(0, max(inDF$V1)+3, intRan), labels=seq(0, max(inDF$V1)+3, intRan))+
+         theme(axis.text.x=element_blank(), axis.text.y = element_text(size=20), 
+               axis.title=element_text(size=20), strip.text.x =element_text(size=20),
+               title = element_text(size=25))
+   return(a)
+} 
+
+p1 <- plotClonotypeCellDist(inDF=z[z$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=5)
+p2 <- plotClonotypeCellDist(z[z$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=20)
+#p3 <- plotClonotypeCellDist(z[z$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=5)
+p4 <- plotClonotypeCellDist(z[z$SampleAttributes=="Healthy",],"Healthy", intRan=5)
+print(plot_grid(p1, p2, p4, nrow=4))
+
+```
+
+One representative cell is chosen for each clonotype.
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+dfAll$SampleClonotype <- paste0(dfAll$SampleNames,"_",dfAll$raw_clonotype_id)
+dfAll$v_gene <- sapply(dfAll$v_gene, function(x){return(strsplit(x,"-")[[1]][1])})
+dfAll$d_gene <- sapply(dfAll$d_gene, function(x){return(strsplit(x,"-")[[1]][1])})
+
+dfAllSplit <- split(dfAll, f = dfAll$SampleClonotype)
+dfVDJ <- lapply(dfAllSplit, function(x){
+            return(unique(x[,c("chain","v_gene","d_gene","j_gene","c_gene","raw_clonotype_id","SampleNames","SampleAttribute")])) 
+         })
+
+dfVDJ <- do.call(rbind, dfVDJ)
+dfVDJ$raw_clonotype_id <- paste0(dfVDJ$SampleNames, "_",dfVDJ$raw_clonotype_id)
+```
+
+
+
+B cell isotopes:
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+dfVDJC <- dfVDJ[dfVDJ$c_gene != "None",]
+dfVDJHeavy <- dfVDJC[dfVDJC$chain=="IGH",]
+
+dfVDJHeavy$c_gene <- sapply(dfVDJHeavy$c_gene, function(x){substr(x,1,4)})
+tt <- as.data.frame(table(dfVDJHeavy$SampleNames, dfVDJHeavy$c_gene))
+colnames(tt) <- c("SampleNames", "ChainIsotope","Freq")
+
+tt <- merge(tt, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+tt$ChainType = "Heavy chain"
+
+dfVDJLight <- dfVDJC[dfVDJC$chain!="IGH",]
+ll <- as.data.frame(table(dfVDJLight$SampleNames, dfVDJLight$chain))
+ll <- ll[ll$Var2 %in% c("IGK", "IGL"),]
+colnames(ll) <- c("SampleNames", "ChainIsotope","Freq")
+ll <- merge(ll, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+ll$ChainType <- "Light chain"
+
+tt <- rbind(tt,ll)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=35, fig.height=16}
+  plotClonotypeCellDist <- function(inDF, titleStr, intRan){
+   inDF <- inDF[order(inDF$SampleNames, inDF$ChainType, -inDF$Freq),]
+   
+   sampleNamesOrder <- unique(inDF$SampleNames)
+   inDF$SampleNames <- factor(inDF$SampleNames, levels=sampleNamesOrder)
+   
+   inDF$ChainIsotope <- factor(inDF$ChainIsotope, levels = c("IGHA","IGHG","IGHM","IGHE","IGHD", "IGK","IGL"))
+   
+   
+   a <-  ggplot(inDF, aes(x=ChainIsotope, y=Freq, fill=ChainType)) +
+         geom_bar(stat="identity", color="black", position = position_dodge())+
+         ylab("Number of cells")+ggtitle(titleStr)+
+         xlab("")+
+         facet_wrap(~SampleNames, nrow = 1,scales="free_x")+ theme_bw()+
+         scale_y_continuous(breaks = seq(0, max(inDF$Freq)+3, intRan), labels=seq(0, max(inDF$Freq)+3, intRan))+
+         theme(axis.text.x=element_text(size=20, angle = 90, hjust = 1), axis.text.y = element_text(size=20), 
+               strip.text.x =element_text(size=20),
+               title = element_text(size=30))+scale_fill_brewer(palette = "Dark2")
+   return(a)
+} 
+
+p1 <- plotClonotypeCellDist(inDF=tt[tt$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=500)
+p2 <- plotClonotypeCellDist(tt[tt$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=500)
+#p3 <- plotClonotypeCellDist(tt[tt$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=500)
+p4 <- plotClonotypeCellDist(tt[tt$SampleAttributes=="Healthy",],"Healthy", intRan=500)
+print(plot_grid(p1, p2, p4, nrow=4))
+
+```
+B cell isotope pairs:
+```{r}
+ dfVDJT <- as.data.table(dfVDJ[dfVDJ$c_gene !="None",])
+ dfVDJT <- dfVDJT[dfVDJT$chain %in% c("IGH","IGL","IGK")]
+ dfVDJT$cGeneSum <- sapply(dfVDJT$c_gene, function(x){return(substr(x,1,4))})
+ dfVDJT[dfVDJT$cGeneSum=="IGLC","cGeneSum"] <- "IGL"
+ dfVDJT[dfVDJT$cGeneSum=="IGKC","cGeneSum"] <- "IGK"
+ 
+ sNamesOrder <- unique(dfVDJT$SampleNames)
+ dfVDJT$SampleNames <- factor(dfVDJT$SampleNames, levels = sNamesOrder)
+ dfVDJT <- dfVDJT[order(dfVDJT$SampleNames, dfVDJT$raw_clonotype_id, dfVDJT$chain),]
+ 
+ dfVDJT <- dfVDJT[, ChainPairs := do.call(paste, as.list(cGeneSum)), by = .(raw_clonotype_id)]
+ z <- sapply(dfVDJT$ChainPairs, nchar)
+ ### Cells with more than one heavy or light chain contig are discarded
+ dfVDJT <- dfVDJT[z==8,]
+ dfVDJT$ChainPairs <- sapply(dfVDJT$ChainPairs, function(x){str_replace_all(x, pattern=" ", replacement="_")})
+
+ dfVDJTH <- dfVDJT[dfVDJT$chain=="IGH",]
+ ss <- as.data.frame(table(dfVDJTH$SampleNames, dfVDJTH$ChainPairs))
+ colnames(ss) <- c("SampleNames","IsotopePair","Freq")
+ ss <- merge(ss, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+ ss$lightChainType <- "None"
+ ss[grepl("IGK", ss$IsotopePair), "lightChainType"] <- "kappa"
+ ss[grepl("IGL", ss$IsotopePair), "lightChainType"] <- "lambda"
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=35, fig.height=24}
+  plotIsotopePairDist <- function(inDF, titleStr, intRan){
+   inDF$IsotopePair <- factor(inDF$IsotopePair, levels = paste(rep(c("IGHA", "IGHG", "IGHM", "IGHE", "IGHD"),each=2), rep(c("IGK", "IGL"),5), sep="_"))
+   
+   
+   a <-  ggplot(inDF, aes(x=IsotopePair, y=Freq, fill=lightChainType)) +
+         geom_bar(stat="identity", color="black", position = position_dodge())+
+         ylab("Frequency")+ggtitle(titleStr)+
+         xlab("")+
+         facet_wrap(~SampleNames, nrow = 1)+ theme_bw()+
+         scale_y_continuous(breaks = seq(0, max(inDF$Freq)+3, intRan), labels=seq(0, max(inDF$Freq)+3, intRan))+
+         theme(axis.text.x=element_text(size=20, angle = 90, hjust = 1), axis.text.y = element_text(size=20), 
+               strip.text.x =element_text(size=20),
+               title = element_text(size=30))+scale_fill_brewer(palette = "Dark2")
+   return(a)
+} 
+
+p1 <- plotIsotopePairDist(inDF=ss[ss$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=500)
+p2 <- plotIsotopePairDist(ss[ss$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=500)
+#p3 <- plotIsotopePairDist(ss[ss$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=500)
+p4 <- plotIsotopePairDist(ss[ss$SampleAttributes=="Healthy",],"Healthy", intRan=500)
+print(plot_grid(p1, p2, p4, nrow=4))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=35, fig.height=24}
+
+generateFreq <- function(dfVDJTH, geneType){
+  kall <- data.frame(SampleNames=character(),
+                   s_gene= character(),
+                   Freq=integer(),
+                   ChainType=character())
+
+  for(elem in unique(dfVDJTH$cGeneSum)){
+      tp <- dfVDJTH[dfVDJTH$cGeneSum == elem,]
+      
+      if(geneType == "VGene"){
+         k <- as.data.frame(table(tp[,c("SampleNames","v_gene")]))
+      }else{
+         k <- as.data.frame(table(tp[,c("SampleNames","j_gene")]))
+      }
+     
+      if(nrow(k)>1){
+         k$ChainType <- elem
+         colnames(k) <- c("SampleNames","s_gene","Freq", "ChainType")
+         kall <- rbind(kall,k)
+      }
+    }
+
+  kall <- merge(kall, samples[,c("SampleNames", "SampleAttributes")], by="SampleNames")
+  return(kall)
+}
+
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=16}
+plotSGenes <- function(inDF, titleStr, intRan){
+   
+   a <-  ggplot(inDF, aes(x=ChainType, y=Freq, fill=s_gene)) +
+         geom_bar(stat="identity", color="black", position="fill")+
+         ylab("Frequency")+ggtitle(titleStr)+
+         xlab("")+
+         facet_wrap(~SampleNames, nrow = 1)+ theme_bw()+
+        # scale_y_continuous(breaks = seq(0, max(inDF$Freq)+3, intRan), labels=seq(0, max(inDF$Freq)+3, intRan))+
+         theme(axis.text.x=element_text(size=15, angle = 90, hjust = 1), axis.text.y = element_text(size=15), 
+               strip.text.x =element_text(size=15), legend.text = element_text(size=20),
+               title = element_text(size=20))+scale_fill_manual(values = colorRampPalette(brewer.pal(9, "Dark2"))(9))
+   return(a)
+} 
+
+dfVDJTH <- dfVDJT[dfVDJT$chain == "IGH",]
+dfVDJTH <- dfVDJTH[dfVDJTH$v_gene %in% paste0("IGHV",1:7),]
+kall <- generateFreq(dfVDJTH, geneType="VGene")
+
+kall$ChainType <- factor(kall$ChainType, levels = c("IGHA", "IGHG", "IGHM", "IGHE", "IGHD"))
+  
+p1 <- plotSGenes(inDF=kall[kall$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=50)
+p2 <- plotSGenes(kall[kall$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=50)
+#p3 <- plotSGenes(kall[kall$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=50)
+p4 <- plotSGenes(kall[kall$SampleAttributes=="Healthy",],"Healthy", intRan=50)
+print(plot_grid(p1, p2, p4, nrow=4))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=16}
+dfVDJTH <- dfVDJT[dfVDJT$chain != "IGH",]
+dfVDJTH$v_gene <- sapply(dfVDJTH$v_gene, function(x){substr(x,4,5)})
+dfVDJTH <- dfVDJTH[dfVDJTH$v_gene %in% paste0("V",1:9),]
+kall <- generateFreq(dfVDJTH, geneType="VGene")
+
+p1 <- plotSGenes(inDF=kall[kall$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=50)
+p2 <- plotSGenes(kall[kall$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=50)
+#p3 <- plotSGenes(kall[kall$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=50)
+p4 <- plotSGenes(kall[kall$SampleAttributes=="Healthy",],"Healthy", intRan=50)
+print(plot_grid(p1, p2, p4, nrow=4))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=16}
+dfVDJTH <- dfVDJT[dfVDJT$chain == "IGH",]
+dfVDJTH$j_gene <- sapply(dfVDJTH$j_gene, function(x){substr(x,4,5)})
+
+dfVDJTH <- dfVDJTH[dfVDJTH$j_gene %in% paste0("J",1:6),]
+kall <- generateFreq(dfVDJTH, geneType="JGene")
+
+kall$ChainType <- factor(kall$ChainType, levels = c("IGHA", "IGHG", "IGHM", "IGHE", "IGHD"))
+  
+p1 <- plotSGenes(inDF=kall[kall$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=50)
+p2 <- plotSGenes(kall[kall$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=50)
+#p3 <- plotSGenes(kall[kall$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=50)
+p4 <- plotSGenes(kall[kall$SampleAttributes=="Healthy",],"Healthy", intRan=50)
+print(plot_grid(p1, p2, p4, nrow=4))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=16}
+dfVDJTH <- dfVDJT[dfVDJT$chain != "IGH",]
+dfVDJTH$j_gene <- sapply(dfVDJTH$j_gene, function(x){substr(x,4,5)})
+dfVDJTH <- dfVDJTH[dfVDJTH$j_gene %in% paste0("J",1:6),]
+kall <- generateFreq(dfVDJTH, geneType="JGene")
+
+p1 <- plotSGenes(inDF=kall[kall$SampleAttributes=="UC_INF",],"UC Inflamed", intRan=50)
+p2 <- plotSGenes(kall[kall$SampleAttributes=="UC_NonINF",],"UC Non-Inflamed", intRan=50)
+#p3 <- plotSGenes(kall[kall$SampleAttributes=="PSC_NonINF",],"PSC Non-Inflamed", intRan=50)
+p4 <- plotSGenes(kall[kall$SampleAttributes=="Healthy",],"Healthy", intRan=50)
+print(plot_grid(p1, p2, p4, nrow=4))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=24, fig.height=6}
+dfVDJTH <- dfVDJT[dfVDJT$chain == "IGH",]
+dfVDJTH$j_gene <- sapply(dfVDJTH$j_gene, function(x){substr(x,4,5)})
+dfVDJTH$v_gene <- sapply(dfVDJTH$v_gene, function(x){substr(x,4,5)})
+
+dfVDJTH <- dfVDJTH[dfVDJTH$j_gene %in% paste0("J",1:6),]
+dfVDJTH <- dfVDJTH[dfVDJTH$v_gene %in% paste0("V",1:7),]
+
+plotVJHeatMaps <- function(inDF){
+  s <- table(inDF[,c("v_gene","j_gene","SampleNames")])
+  sampleN <- unique(inDF$SampleNames)
+  allHs <- list()
+  for(i in 1:length(sampleN)){
+    h <- ggplot(as.data.frame(s[,,i]), aes(v_gene, j_gene)) + geom_tile(aes(fill = Freq),
+   colour = "white") + scale_fill_gradient(low = "white", high = "steelblue")+theme(axis.text.x=element_text(size=25), axis.text.y = element_text(size=25), legend.position = "None", title = element_text(size=25))+ggtitle(sampleN[i])
+    
+    allHs <- lappend(allHs, h)
+  }
+  
+  return(allHs)
+}
+
+dfVDJTH$SampleNames <- as.character(dfVDJTH$SampleNames)
+p1 <- plotVJHeatMaps(inDF=dfVDJTH[dfVDJTH$SampleAttribute=="UC_INF",])
+p2 <- plotVJHeatMaps(dfVDJTH[dfVDJTH$SampleAttribute=="UC_NonINF",])
+#p3 <- plotVJHeatMaps(dfVDJTH[dfVDJTH$SampleAttribute=="PSC_NonINF",])
+p4 <- plotVJHeatMaps(dfVDJTH[dfVDJTH$SampleAttribute=="Healthy",])
+print(plot_grid(p1[[1]],p1[[2]],p1[[3]],p1[[4]],p1[[5]], nrow=1))
+print(plot_grid(p1[[6]],p1[[7]],p1[[8]],p1[[9]],p1[[10]],nrow=1))
+print(plot_grid(p2[[1]],p2[[2]],p2[[3]],p2[[4]],p2[[5]],nrow=1))
+print(plot_grid(p2[[6]],p2[[7]], p2[[8]],p2[[9]],p2[[10]],nrow=1))
+print(plot_grid(p2[[11]],p2[[12]],p2[[13]],p2[[14]], nrow = 1))
+#print(plot_grid(p3[[1]],p3[[2]],p3[[3]],p3[[4]],p3[[5]], nrow=1))
+print(plot_grid(p4[[1]],p4[[2]],p4[[3]],p4[[4]], nrow=1))
+```
+
+```{r}
+dfAllS <- dfAll[dfAll$raw_clonotype_id != "None",]
+dfAllSplit <- split(dfAll, f = dfAllS$SampleClonotype)
+k <- sapply(dfAllSplit, function(x){length(unique(x$barcode))})
+m <- sapply(names(k), function(x){strsplit(x,"_clonotype")})
+m <- as.data.frame(do.call(rbind,m))
+colnames(m) <- c("sampleName","clonotype")
+m$cellCount <- k
+
+m <- data.table(m)
+m[,max(cellCount),by=sampleName]
+```
+

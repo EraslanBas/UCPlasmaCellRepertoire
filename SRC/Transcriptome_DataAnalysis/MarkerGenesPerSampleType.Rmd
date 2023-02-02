@@ -1,0 +1,71 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(gtools)
+library(RColorBrewer)
+library(calibrate)
+library('sva')
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+library(liger)
+library(Seurat)
+library(SeuratWrappers)
+reticulate::use_python("/home/beraslan/anaconda3/bin/python", required = T)
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=5}
+  donorObjects <- readRDS(paste0(dataDir, "/RDSFiles/perTypeIntegratedSamples_12292019.rds"))
+  allObjMarkers <- readRDS(paste0(dataDir, "/RDSFiles/perTypeSamplesObjectMarkers_12292019.rds"))
+```
+
+Expression values of the marker genes per cluster based on the colon region and inflammation status:
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=25, fig.height=20}
+  
+  
+  for(i in 1:length(donorObjects)){
+  donObj <- donorObjects[[i]]
+  print(paste0("####################  ", unique(donObj$stim)," ##################"))
+  if(length(unique(donObj$seurat_clusters)) > 1){
+        obj.markers <- allObjMarkers[[i]]
+        top10 <- obj.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+        
+        if(length(unique(donObj$position)) > 1){
+          donObj$position.cluster <- factor(paste(donObj$position, donObj$seurat_clusters, sep = "_"), 
+                                               levels=paste(rep(unique(donObj$position), each=length(unique(donObj$seurat_clusters))),
+                                                            sort(unique(donObj$seurat_clusters)), sep = "_"))
+          
+          Idents(donObj) <- "position.cluster"
+          
+          for(ii in sort(unique(as.character(top10$cluster)))){
+            top10Temp <- top10[top10$cluster == ii,]
+            print(DotPlot(donObj, assay="RNA", features = unique(rev(top10Temp$gene)), cols = c("red", "blue"),
+                  dot.scale = 6,  col.min = 0, col.max = 6) + 
+                  RotatedAxis()+ggtitle(paste0(unique(donObj$stim), " cluster ", ii , " genes")))
+          }
+        }
+        
+        if(length(unique(donObj$donorID)) > 1){
+          donObj$don.cluster <- as.factor(paste(donObj$donorID, donObj$seurat_clusters, sep = "_"), 
+                                               levels=paste(rep(unique(donObj$position), each=length(unique(donObj$seurat_clusters))),
+                                                            sort(unique(donObj$seurat_clusters)), sep = "_"))
+          Idents(donObj) <- "don.cluster"
+          for(ii in sort(unique(as.character(top10$cluster)))){
+            
+            top10Temp <- top10[top10$cluster == ii,]
+            print(DotPlot(donObj, features = unique(rev(top10Temp$gene)), cols = c("red", "blue"),
+                  dot.scale = 6, col.min = 0, col.max = 6) + RotatedAxis()+
+                  ggtitle(paste0(unique(donObj$stim), " cluster ", ii , " genes")))
+          }
+        }
+    }
+        
+  }
+
+```

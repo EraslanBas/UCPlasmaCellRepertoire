@@ -1,0 +1,60 @@
+---
+title: "Summarized Repertoire Analysis 10"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+source("Main.R")
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+plotCloneVennDiag <- function(donorID){
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",donorID,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 30)
+  
+  
+  inClonesType <- unique(inClones[,c("CLONE", "sampleRegion","NumberOfRegionalClonalCells")])
+  colnames(inClonesType) <- c("CLONE", "sampleRegion","NRC")
+  inClonesType = reshape(inClonesType, idvar = "CLONE", direction = "wide", timevar = "sampleRegion")
+  inClonesType[is.na(inClonesType)] <- 0
+  inClonesType = melt(inClonesType, id.vars = "CLONE")
+  
+  inClonesType$variable <- sapply(inClonesType$variable, function(x){strsplit(as.character(x),"\\.")[[1]][2]})
+  
+  colnames(inClonesType) <- c("CLONE", "Region", "value")
+  inClonesType$pSize= inClonesType$value * 0.01
+  
+  if(length(unique(inClonesType$Region)) > 1)
+  {
+       if(length(unique(inClonesType$CLONE)) > 8){
+         unClones =unique(inClonesType$CLONE)
+         i=1
+         while(i < length(unique(inClonesType$CLONE))){
+            unClonestemp <- unClones[i:min((i+7),length(unique(inClonesType$CLONE)))]
+            inClonesTypeTemp <- inClonesType[inClonesType$CLONE %in% unClonestemp,]
+            i = i + 7
+            print(ggplot(data = inClonesTypeTemp, aes(x = Region, y = value, group = CLONE)) + 
+              geom_point(aes(colour = CLONE, size=pSize)) +
+              geom_line(aes(colour = CLONE))+
+              ggtitle(donorID)+theme_bw()+theme(legend.position = "None")+
+              ylab("Number of cells")
+            )
+           }
+        }
+ 
+  }
+ 
+   
+}
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4}
+for(donorID in unique(samples$DonorID)){
+  plotCloneVennDiag(donorID)
+}
+```
+

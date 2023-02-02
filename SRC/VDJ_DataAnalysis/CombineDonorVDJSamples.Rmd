@@ -1,0 +1,65 @@
+---
+title: "Combine samples per donor"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+samples <- samples[samples$Use==1,]
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+  samples$DonorID <- as.character(samples$DonorID)
+
+  for(elem in unique(as.character(samples$DonorID))){
+    print(elem)
+    
+    sampsTemp <- samples[samples$DonorID == elem,]
+    
+    fTemp = data.frame()
+    
+    for(i in 1:length(sampsTemp$SampleNames)){
+      print(i)
+      k <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/VDJ_Files/",sampsTemp$SampleNames[i],
+                   "/ChangeO/filtered_single_light_heavy_paired.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+      
+      k$sampleName <- sampsTemp$SampleNames[i]
+      k$CELL <- paste0(k$CELL,"_",sampsTemp$SampleNames[i])
+      k$SEQUENCE_ID <- paste0(k$SEQUENCE_ID,"_",sampsTemp$SampleNames[i])
+      k$sampleType <- sampsTemp$SampleAttributes[i]
+      fTemp <- rbind(fTemp, k)
+    }
+    
+    mkdir(paste0(dataDir,"/Subjects/",elem))
+    write.table(fTemp, 
+                file =paste0(dataDir,"/Subjects/",elem,
+                             "/filtered_single_light_heavy_paired.tab"),
+                sep="\t", row.names = FALSE, quote = F)
+  }
+ 
+```
+
+```{r}
+
+  fTemp = data.frame()
+  for ( donor in as.character(unique(samples$DonorID))){
+     print(donor)
+      k <- read.table(paste0(dataDir,"/Subjects/",donor,"/filtered_single_light_heavy_paired.tab"), sep="\t", header=TRUE, stringsAsFactors = F)
+      k$donorID <- donor
+      fTemp <- rbind(fTemp, k)
+  }
+
+   write.table(fTemp, 
+                file =paste0(dataDir,"/Subjects/allDonorsfiltered_single_light_heavy_paired.tab"),
+                sep="\t", row.names = FALSE, quote = F)
+```
+

@@ -1,0 +1,215 @@
+---
+title: "Heavy - light chain type distributions in samples"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+```
+
+```{r}
+samps <-  readRDS(paste0(dataDir, "/RDSFiles/allSamples.rds"))
+IG_genes <- read.csv(paste0(dataDir,"IG_Genes.txt"), sep = '\t', stringsAsFactors = F)
+
+IG_genes <- IG_genes[IG_genes$Gene.type %in% c("IG_V_gene", "IG_D_gene", "IG_C_gene", "IG_J_gene"),]
+IG_genes$GeneTypeDetail <- sapply(IG_genes$Gene.name, function(x){substr(x,start = 1,4)})
+
+hcGenes <- unique(IG_genes[IG_genes$Gene.type=="IG_C_gene","GeneTypeDetail"])
+hcGenes <- hcGenes[hcGenes %ni% c("IGKC", "IGLC")]
+hcGenesNames <- IG_genes[IG_genes$GeneTypeDetail %in% hcGenes, c("Gene.name","GeneTypeDetail")]
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+dfAll <- data.frame(cellNo=numeric(), IgType=character(), sampleName=character())
+
+for(serObj in samps){
+  print(serObj@project.name)
+  x <- as.matrix(GetAssayData(serObj, slot = "data"))
+  availableGIndex <- which(hcGenesNames$Gene.name %in% rownames(x))
+  availableGenes <- hcGenesNames[availableGIndex,]
+  # pheatmap(x[availableGenes$Gene.name,],
+  #          show_colnames = F,
+  #          treeheight_row = 0,
+  #          treeheight_col = 0,
+  #          main = serObj@project.name)
+  
+  totalUMIcounts <- list()
+  elemNames <- c()
+  for(elem in hcGenes){
+    relGeneNames <- availableGenes[availableGenes$GeneTypeDetail==elem,"Gene.name"]
+   
+    if(length(relGeneNames)>0){
+      totalUMIcounts <- lappend(totalUMIcounts, colSums(x[relGeneNames,]))
+      elemNames <- c(elemNames, elem)
+    }
+  }
+  names(totalUMIcounts) <-elemNames
+  totalUMIcounts <- do.call(rbind, totalUMIcounts)
+  pheatmap(totalUMIcounts, 
+           show_colnames = F,
+           treeheight_row = 0,
+           treeheight_col = 0,
+           main = serObj@project.name)
+  allTSums <- colSums(totalUMIcounts)
+  cType <- apply(totalUMIcounts[,which(allTSums > 3)],2,function(x){which.max(x)})
+  df <- data.frame(cellNo=as.numeric(table(cType)), IgType=rownames(totalUMIcounts[,which(allTSums > 3)])[as.numeric(names(table(cType)))], sampleName=serObj@project.name)
+  dfAll <- rbind(dfAll, df)
+}
+
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+sampDF=data.frame(sampleName=sampleNames,
+                 sampleAttributes=factor(sampleAttributesPrint,
+                                         levels = c("UC Inflamed", "UC Non-Inflamed", "PSC1 Non-Inflamed", "Healthy")),
+                 donorID=as.factor(donorID))
+
+dfAll <- merge(dfAll, sampDF, by="sampleName")
+dfAll$IgType <- as.factor(dfAll$IgType)
+ggplot(data=dfAll, aes(x=sampleName, y=cellNo, fill=IgType)) +
+    geom_bar(stat="identity", position="fill")+
+    facet_wrap( ~ sampleAttributes, scales='free_x', nrow = 1)+
+    scale_fill_brewer(palette = "Dark2")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    xlab("Sample names")+ylab("Percent of cells")+
+    theme(legend.position = "right")
+
+ dfAll$donorID <- factor(dfAll$donorID, levels = c(8260, 10122, 10094, 8933, 9891, 10101, 10112, 10139),
+                       labels = paste0("DN_",c(8260, 10122, 10094, 8933, 9891, 10101, 10112, 10139)))
+  
+dfAll$sampleName <-  factor(dfAll$sampleName, levels=c( "20190409_JS_1_INF",
+                                                      "20190409_JS_2_NonINF_A",
+                                                      "20190409_JS_3_NonINF_B",
+                                                      "20190416_PSC1NonINFA",
+                                                      "20190416_PSC1NonINFB",
+                                                      "20190520_UC7ILNonInf",
+                                                      "20190520_UC7PouchNonInf",
+                                                      "20190523_Prism1",
+                                                      "20190523_Prism2",
+                                                      "20190523_Prism3",
+                                                      "20190523_Prism4",
+                                                      "PSC2NONINFA",
+                                                      "PSC2NONINFB",
+                                                      "PSC2NONINFC",
+                                                      "SINFA",
+                                                      "SINFB",
+                                                      "TINONINF",
+                                                      "LCNONINF",
+                                                      "UC5N1",
+                                                      "UC5T1",
+                                                      "UC6RINFB",
+                                                      "UC6RINFC",
+                                                      "UC6RINFD",
+                                                      "UC6RN1") )
+
+ggplot(data=dfAll, aes(x=sampleName, y=cellNo, fill=IgType)) +
+    geom_bar(stat="identity", position="fill")+
+    facet_wrap( ~ donorID, scales='free_x', nrow = 1)+
+    scale_fill_brewer(palette = "Dark2")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    xlab("Sample names")+ylab("Percent of cells")+
+    theme(legend.position = "right")
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+vGenes <- unique(IG_genes[IG_genes$Gene.type=="IG_V_gene","GeneTypeDetail"])
+vGenes <- vGenes[vGenes %in% c("IGKV", "IGLV")]
+vGenesNames <- IG_genes[IG_genes$GeneTypeDetail %in% vGenes, c("Gene.name","GeneTypeDetail")]
+
+```
+
+Lambda/ Kappa light chain distributions
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+dfAll <- data.frame(cellNo=numeric(), LCType=character(), sampleName=character())
+
+for(serObj in samps){
+  print(serObj@project.name)
+  x <- as.matrix(GetAssayData(serObj, slot = "data"))
+  availableGIndex <- which(vGenesNames$Gene.name %in% rownames(x))
+  availableGenes <- vGenesNames[availableGIndex,]
+  # pheatmap(x[availableGenes$Gene.name,],
+  #          show_colnames = F,
+  #          treeheight_row = 0,
+  #          treeheight_col = 0,
+  #          main = serObj@project.name)
+  
+  totalUMIcounts <- list()
+  elemNames <- c()
+  for(elem in vGenes){
+    relGeneNames <- availableGenes[availableGenes$GeneTypeDetail==elem,"Gene.name"]
+   
+    if(length(relGeneNames)>0){
+      totalUMIcounts <- lappend(totalUMIcounts, colSums(x[relGeneNames,]))
+      elemNames <- c(elemNames, elem)
+    }
+  }
+  names(totalUMIcounts) <-elemNames
+  totalUMIcounts <- do.call(rbind, totalUMIcounts)
+  pheatmap(totalUMIcounts,
+           show_colnames = F,
+           treeheight_row = 0,
+           treeheight_col = 0,
+           main = serObj@project.name)
+  allTSums <- colSums(totalUMIcounts)
+  cType <- apply(totalUMIcounts[,which(allTSums > 3)],2,function(x){which.max(x)})
+  df <- data.frame(cellNo=as.numeric(table(cType)), LCType=rownames(totalUMIcounts[,which(allTSums > 3)])[as.numeric(names(table(cType)))], sampleName=serObj@project.name)
+  dfAll <- rbind(dfAll, df)
+}
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+dfAll <- merge(dfAll, sampDF, by="sampleName")
+dfAll$LCType <- as.factor(dfAll$LCType)
+ggplot(data=dfAll, aes(x=sampleName, y=cellNo, fill=LCType)) +
+    geom_bar(stat="identity", position="fill")+
+    facet_wrap( ~ sampleAttributes, scales='free_x', nrow = 1)+
+    scale_fill_brewer(palette = "Dark2")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    xlab("Sample names")+ylab("Percent of cells")+
+    theme(legend.position = "right")
+
+ dfAll$donorID <- factor(dfAll$donorID, levels = c(8260, 10122, 10094, 8933, 9891, 10101, 10112, 10139),
+                       labels = paste0("DN_",c(8260, 10122, 10094, 8933, 9891, 10101, 10112, 10139)))
+  
+dfAll$sampleName <-  factor(dfAll$sampleName, levels=c( "20190409_JS_1_INF",
+                                                      "20190409_JS_2_NonINF_A",
+                                                      "20190409_JS_3_NonINF_B",
+                                                      "20190416_PSC1NonINFA",
+                                                      "20190416_PSC1NonINFB",
+                                                      "20190520_UC7ILNonInf",
+                                                      "20190520_UC7PouchNonInf",
+                                                      "20190523_Prism1",
+                                                      "20190523_Prism2",
+                                                      "20190523_Prism3",
+                                                      "20190523_Prism4",
+                                                      "PSC2NONINFA",
+                                                      "PSC2NONINFB",
+                                                      "PSC2NONINFC",
+                                                      "SINFA",
+                                                      "SINFB",
+                                                      "TINONINF",
+                                                      "LCNONINF",
+                                                      "UC5N1",
+                                                      "UC5T1",
+                                                      "UC6RINFB",
+                                                      "UC6RINFC",
+                                                      "UC6RINFD",
+                                                      "UC6RN1") )
+
+ggplot(data=dfAll, aes(x=sampleName, y=cellNo, fill=LCType)) +
+    geom_bar(stat="identity", position="fill")+
+    facet_wrap( ~ donorID, scales='free_x', nrow = 1)+
+    scale_fill_brewer(palette = "Dark2")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    xlab("Sample names")+ylab("Percent of cells")+
+    theme(legend.position = "right")
+
+
+```
+

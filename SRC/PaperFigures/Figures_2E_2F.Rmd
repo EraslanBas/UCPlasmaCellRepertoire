@@ -1,0 +1,361 @@
+---
+title: "Figures 2E, 2F"
+output: html_notebook
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+rownames(samples) <- samples$SampleNames
+library(plyr)
+library(gtools)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+getCloneRepresentativeCells <- function(allContigsTemp){
+  allContigsTemp$donorClone <- paste0(allContigsTemp$donorID, "_", allContigsTemp$CLONE)
+
+  allContigsTemp <- split(allContigsTemp, f = allContigsTemp$donorClone)
+  
+  allContigsTemp <- lapply(allContigsTemp, function(x){
+      k <- rownames(unique(x[,c("SAMPLENAME","C_CALL_General","C_CALL_LIGHT_General")]))
+      return(x[k,])
+  })
+  
+  allContigsTemp <- do.call(rbind, allContigsTemp)
+  
+  return(allContigsTemp)
+}
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=4}
+calculateOverlapFreq <- function(inClones1, inClones2){
+  
+  k=0
+  cSize=100
+  percIntersect = c()
+  while( k < 1000){
+    s1 <- inClones1[sample(c(1:nrow(inClones1)), size = cSize, replace=F),]
+    s2 <- inClones2[sample(c(1:nrow(inClones2)), size = cSize, replace=F),]
+    
+    percIntersect <- c(percIntersect, ((length( which(s1$CLONE %in% s2$CLONE)) ) / (cSize))*100 )
+    k <- k+1
+  }
+    
+  return(percIntersect)
+  
+}
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+allDFsCombined <- data.frame()
+
+
+for(elem in unique(samples$DonorID)){
+  print(elem)
+  inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                   "/filtered_single_light_heavy_paired_clone-pass.tab"),
+            sep="\t", header=TRUE, stringsAsFactors = F)
+  inClones <- prepareClones(inClones, minNumCells = 1)
+
+  distinct_regions = list() 
+  
+  UReg = unique(inClones$sampleRegion)
+  UReg = UReg[order(UReg)]
+  for(i in UReg){
+    inClonesTemp <- inClones[inClones$sampleRegion == i,]
+    ## Get one representative of each clone tp account for the expansion
+    inClonesTemp <- unique(inClonesTemp[,c("CLONE","sampleRegion", "sampleRegionClone")])
+    distinct_regions <- lappend(distinct_regions, inClonesTemp)
+  }
+  
+  names(distinct_regions) <- UReg
+  
+  #if(length(distinct_regions) > 1){
+      allDFs <- data.frame(stringsAsFactors = F)
+      
+      for(i in 1:(length(distinct_regions) )){
+        
+         myS1 <- distinct_regions[[i]]
+        
+         for(j in i:(length(distinct_regions))){
+            
+            myS2 <- distinct_regions[[j]]
+            
+            k <- calculateOverlapFreq(inClones1=myS1, inClones2=myS2)
+            tempDf = data.frame(percOverlap=k, 
+                                i = names(distinct_regions)[i], 
+                                j = names(distinct_regions)[j], stringsAsFactors = F)
+            
+            if(names(distinct_regions)[i] == names(distinct_regions)[j]){
+              tempDf$compType = "sameRegion"
+            }else {
+                if(strsplit(names(distinct_regions)[i], "-")[[1]][1] ==  strsplit(names(distinct_regions)[j], "-")[[1]][1]){
+                   tempDf$compType = "sameInflammation"
+                }else{
+                  tempDf$compType = "differentInflammation"
+                }
+              
+            }
+            
+            allDFs <- rbind(allDFs, tempDf)
+         }
+      }
+      
+      allDFs$pairName <- paste0(allDFs$i, " vs. ",allDFs$j)
+      allDFs$Donor = elem
+      allDFs$SampleType <- unique(samples[samples$DonorID == elem,"DonorAttribute"])
+      
+      allDFsCombined <- rbind(allDFsCombined, allDFs)
+  #}
+}
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+ allDFsCombined$DonorPairName = paste0(allDFsCombined$Donor, "_",allDFsCombined$pairName)
+
+ allDFsCombined <- data.table(allDFsCombined)
+ allDFsCombined[,donorGrpMedian := median(percOverlap),by=DonorPairName]
+ allDFsCombined[,grpMedian := median(percOverlap),by=pairName]
+ 
+ allDFsCombined$xType = sapply(allDFsCombined$pairName,function(x){strsplit(x,"-")[[1]][1]})
+ allDFsCombined$xType <- factor(allDFsCombined$xType, levels = c("Healthy ", "UC_NonINF ", "UC_LessINF ", "UC_INF "))
+ allDFsCombined[allDFsCombined$compType == "differentInflammation", "xType"] <- "UC_INF - UC_LessINF"
+
+
+ allDFsCombined[allDFsCombined$compType == "sameRegion","compType"] = "Same Region \n Same Inflammation"
+ allDFsCombined[allDFsCombined$compType == "sameInflammation","compType"] = "Different Region \n Same Inflammation"
+ allDFsCombined[allDFsCombined$compType == "differentInflammation","compType"] = "Different Region \n Different Inflammation"
+
+ allDFsCombined$compType <- factor(allDFsCombined$compType, levels = c("Same Region \n Same Inflammation", "Different Region \n Same Inflammation", "Different Region \n Different Inflammation"))
+ allDFsCombined$SampleType <- factor(allDFsCombined$SampleType, levels = c("Healthy", "UC_NonINF", "UC"))
+ 
+ 
+ deneme <- unique((allDFsCombined[,c("pairName", "compType", "grpMedian", "SampleType", "xType")]))
+ rownames(deneme) <- deneme$pairName
+ 
+ deneme <- deneme[order(compType, SampleType, xType, -grpMedian)]
+ 
+ allDFsCombined$pairName <- factor(allDFsCombined$pairName, levels = deneme[order(compType, SampleType, xType, -grpMedian)]$pairName)
+ 
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=20, fig.height=15}
+allDFsCombined <- data.frame(allDFsCombined)
+p <- ggplot(allDFsCombined, aes(y=percOverlap, x=pairName)) +
+          geom_violin(trim=FALSE,  aes(fill=xType))+
+          facet_wrap(.~compType, scales = "free_x")+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="median", geom="text", size=4)+
+          # stat_compare_means(method="wilcox.test",paired = FALSE,
+          #                           comparisons = myClist,
+          #                           color="red",
+          #                          aes(label = ..p.signif..))+
+          #scale_y_continuous(trans = "log2")+
+          scale_fill_manual(values=c("lightskyblue1", "palegreen", "peachpuff", "lightcoral", "thistle2"))+
+          theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, size=11),
+                           axis.title.y = element_text( size=15),
+                           axis.text.y = element_text( size=15),
+                           strip.text = element_text(size=15),
+                           legend.position = "None")+ylab("Percent of clonal overlap")+xlab("")
+
+
+     # convert ggplot object to grob object
+    gp <- ggplotGrob(p)
+    
+    # get gtable columns corresponding to the facets (5 & 9, in this case)
+    facet.columns <- gp$layout$l[grepl("panel", gp$layout$name)]
+    
+    # get the number of unique x-axis values per facet (1 & 3, in this case)
+    x.var <- sapply(ggplot_build(p)$layout$panel_scales_x,
+                    function(l) length(l$range$range))
+    
+    # change the relative widths of the facet columns based on
+    # how many unique x-axis values are in each facet
+    gp$widths[facet.columns] <- gp$widths[facet.columns] * x.var
+    
+    # plot result
+    pdf(file = "./PDFFigures/S3A_uniqueClonalMember.pdf", width = 15,  height = 9)
+      grid::grid.draw(gp)
+    dev.off()
+```
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=4}
+ 
+ allDFsCombined$xTypePrint = as.character(allDFsCombined$xType)
+ allDFsCombined[allDFsCombined$xTypePrint == "UC_INF ","xTypePrint"] = "UC Inflamed"
+ allDFsCombined[allDFsCombined$xTypePrint == "UC_INF - UC_LessINF","xTypePrint"] = "UC Inflamed - UC Less-Inflamed"
+ allDFsCombined[allDFsCombined$xTypePrint == "UC_LessINF ","xTypePrint"] = "UC Less-Inflamed"
+ allDFsCombined[allDFsCombined$xTypePrint == "UC_NonINF ","xTypePrint"] = "UC Non-Inflamed"
+ 
+ allDFsCombined$xTypePrint <- factor(allDFsCombined$xTypePrint, levels = c("Healthy ", "UC Non-Inflamed", "UC Less-Inflamed", "UC Inflamed", "UC Inflamed - UC Less-Inflamed"))
+ 
+ 
+ p <- ggplot(allDFsCombined, aes(y=percOverlap, x=xTypePrint)) +
+          geom_violin(trim=FALSE,  aes(fill=xType))+
+          facet_wrap(.~compType, scales = "free_x")+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="median", geom="text", size=8)+
+          # stat_compare_means(method="wilcox.test",paired = FALSE,
+          #                           comparisons = myClist,
+          #                           color="red",
+          #                          aes(label = ..p.signif..))+
+          labs(x="", x = "Clonal overlap percentage (%)")+
+          #scale_y_continuous(trans = "log2")+
+          scale_fill_manual(values=c("lightskyblue1", "palegreen", "peachpuff", "lightcoral", "thistle2"))+
+          theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, size=16),
+                           axis.title.y = element_text( size=15),
+                           axis.text.y = element_text( size=15),
+                           strip.text = element_text(size=15),
+                           legend.position = "None")+ylab("Percent of clonal overlap (%)")
+ 
+ 
+     # convert ggplot object to grob object
+    gp <- ggplotGrob(p)
+    
+    # get gtable columns corresponding to the facets (5 & 9, in this case)
+    facet.columns <- gp$layout$l[grepl("panel", gp$layout$name)]
+    
+    # get the number of unique x-axis values per facet (1 & 3, in this case)
+    x.var <- sapply(ggplot_build(p)$layout$panel_scales_x,
+                    function(l) length(l$range$range))
+    
+    # change the relative widths of the facet columns based on
+    # how many unique x-axis values are in each facet
+    gp$widths[facet.columns] <- gp$widths[facet.columns] * c(4,4,2.1)
+    
+    # plot result
+    pdf(file = "./PDFFigures/Fig2D_uniqueClonalMember.pdf", width = 11,  height = 6)
+      grid::grid.draw(gp)
+    dev.off()
+
+```
+
+```{r}
+p <- ggplot(allDFsCombined, aes(y=percOverlap, x=compType)) +
+          geom_violin(trim=FALSE,  aes(fill=xType))+
+          facet_wrap(.~xTypePrint, scales = "free_x", ncol = 5)+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="median", geom="text", size=8)+
+          stat_compare_means(method="wilcox.test",paired = FALSE,
+                                    comparisons = list(c("Same Region \n Same Inflammation", "Different Region \n Same Inflammation")),
+                                    color="red",
+                                   aes(label = ..p.signif..))+
+          labs(x="", x = "Clonal overlap percentage (%)")+ylim(0,100)+ylab("Percent of clonal overlap (%)")
+
+pdf(file = "./PDFFigures/S3C_uniqueClonalMember.pdf", width = 15,  height = 6)
+  plot(p)
+dev.off()
+          
+```
+
+```{r}
+allDFsCombinedInf <- allDFsCombined[allDFsCombined$Donor %in% c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22"),]
+allDFsCombinedNonInf <- allDFsCombined[allDFsCombined$Donor %in% c("UC4", "UC9", "UC14","UC19", "UC23"),]
+allDFsCombinedHealthy <- allDFsCombined[allDFsCombined$Donor %in% c("Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5","Healthy7","Healthy8","Healthy9"),]
+
+```
+
+```{r fig.width=18, fig.height=4}
+
+allDFsCombinedInf$Donor <- factor(allDFsCombinedInf$Donor, levels = c("UC3", "UC10", "UC15", "UC16", "UC17", "UC18","UC20", "UC22")) 
+
+p <- ggplot(allDFsCombinedInf, aes(y=percOverlap, x= pairName)) +
+          geom_violin(trim=FALSE,  aes(fill=compType))+
+          facet_grid(~Donor, scales = "free_x")+
+          #geom_density(alpha=0.6)+
+          stat_summary(fun.data="mean_sdl",
+                     geom="crossbar", width=0.2, color="red")+
+          stat_summary(aes(label=round(..y..,2)), fun.y="median", geom="text", size=3)+
+          labs(x="", x = "Clonal overlap percentage (%)")+
+          scale_fill_manual(values=c("lightskyblue1", "palegreen", "peachpuff", "lightcoral", "thistle2"))+
+         theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, size=10),
+                           axis.title.y = element_text( size=15),
+                           axis.text.y = element_text( size=15),
+                           strip.text = element_text(size=12),
+                           legend.position = "top")+ylab("Percent of clonal overlap")+xlab("")
+
+   # convert ggplot object to grob object
+    gp <- ggplotGrob(p)
+    
+    # get gtable columns corresponding to the facets (5 & 9, in this case)
+    facet.columns <- gp$layout$l[grepl("panel", gp$layout$name)]
+    
+    # get the number of unique x-axis values per facet (1 & 3, in this case)
+    x.var <- sapply(ggplot_build(p)$layout$panel_scales_x,
+                    function(l) length(l$range$range))
+    
+    # change the relative widths of the facet columns based on
+    # how many unique x-axis values are in each facet
+    gp$widths[facet.columns] <- gp$widths[facet.columns] * x.var
+    
+    
+    
+    
+    pdf(file = "./PDFFigures/S3B_uniqueClonalMember.pdf", width = 15,  height = 9)
+      grid::grid.draw(gp)
+    dev.off()
+
+```
+
+```{r}
+kkDonor <- as.data.frame(unique(allDFsCombined[,c("i", "j", "Donor", "DonorPairName", "donorGrpMedian", "compType")]))
+kkDonor$ratio1 <- NA
+kkDonor$ratio2 <- NA
+
+for(elem in 1:nrow(kkDonor)){
+  
+  if(kkDonor[elem,"compType"] %in% c("Different Region \n Same Inflammation", "Different Region \n Different Inflammation")){
+       myDon = kkDonor[elem,"Donor"]
+       childVal = kkDonor[elem,"donorGrpMedian"]
+       parent1 = kkDonor[elem,"i"]
+       parent2 = kkDonor[elem,"j"]
+       
+       parent1Val = kkDonor[kkDonor$i == parent1 & kkDonor$j == parent1 & kkDonor$Donor == myDon, "donorGrpMedian" ]
+       parent2Val = kkDonor[kkDonor$i == parent2 & kkDonor$j == parent2 & kkDonor$Donor == myDon, "donorGrpMedian" ]
+       
+       kkDonor[elem, "ratio1"] <- round(childVal / parent1Val, digits = 2)
+       kkDonor[elem, "ratio2"] <- round(childVal / parent2Val, digits = 2)
+    
+  }
+}
+
+#write.csv(kkDonor, file = paste0(dataDir,"/ClonalOverlapRatios.csv"), quote = F, row.names = F)
+
+kkDonorTemp <- kkDonor[ !is.na(kkDonor$ratio1), c("compType", "ratio1", "ratio2") ]
+
+kkDonorTempMelt <- melt(kkDonorTemp, id.vars = "compType")
+
+p <- ggplot(kkDonorTempMelt, aes(y=value, x= compType)) +
+          geom_violin(trim=FALSE,  aes(fill=compType))+
+       stat_summary(fun.data="mean_sdl", 
+                 geom="crossbar", width=0.2, color="red")+
+      stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+      stat_compare_means(method="wilcox.test",paired = FALSE,
+                                comparisons = list(c("Different Region \n Different Inflammation", "Different Region \n Same Inflammation")),
+                                color="red",
+                               aes(label = ..p.signif..))+
+      ylab("Ratio to background")+xlab("")+
+      theme_minimal()+theme(axis.text = element_text(size=15),axis.title = element_text(size=15),
+                                     legend.position = "None")
+
+
+pdf(file = "./PDFFigures/Fig2E_uniqueClonalMember.pdf", width = 6,  height = 4)
+  plot(p)
+dev.off()
+  
+```
+

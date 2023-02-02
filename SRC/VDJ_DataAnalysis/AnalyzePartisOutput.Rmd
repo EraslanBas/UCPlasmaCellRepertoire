@@ -1,0 +1,47 @@
+---
+title: "Analyze Partis Output"
+output: html_notebook
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(reshape2)
+library("cowplot")
+library("stringr")
+library(RColorBrewer)
+library(seqinr)  
+library(msa)
+library(ape)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+mySampleNames = c("UC10NoninfA", "UC10InfA")
+```
+
+
+```{r}
+
+for(sampleName in mySampleNames){
+  allContigs <- read.csv(paste0(dataDir,"/VDJ_Files/",sampleName,"/filtered_contig_annotations.csv"), stringsAsFactors = F)
+
+  heavyContigs <- allContigs[allContigs$chain == "IGH",]
+  lightContigs <- allContigs[allContigs$chain %in% c("IGK","IGL"),]
+  
+  allFasta <- read.fasta(paste0(dataDir,"/VDJ_Files/",sampleName,"/filtered_contig.fasta"), as.string = T)
+  heavyFasta <- allFasta[names(allFasta) %in% heavyContigs$contig_id]
+  lightFasta <- allFasta[names(allFasta) %in% lightContigs$contig_id]
+  
+  write.fasta(sequences = getSequence(heavyFasta), names = names(heavyFasta), file.out = paste0(dataDir,"/VDJ_Files/",sampleName,"/filtered_contig_heavyChain.fasta"))
+  write.fasta(sequences = getSequence(lightFasta), names = names(lightFasta), file.out = paste0(dataDir,"/VDJ_Files/",sampleName,"/filtered_contig_lightChain.fasta"))
+}
+
+
+```
+
+```{r}
+for(sampleName in mySampleNames){
+  exYaml <- read_yaml(file=paste0("/Users/beraslan/WORKSPACE/BCell/DATA/VDJ_Files/",sampleName,"/PARTIS/partis-HeavyChainPartition.yaml"), fileEncoding = "UTF-8")
+}
+```
+

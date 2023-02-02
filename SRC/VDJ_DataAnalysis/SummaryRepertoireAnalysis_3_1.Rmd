@@ -1,0 +1,670 @@
+---
+title: "Summarized Repertoire Analysis 3"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library(Peptides)
+library(gtools)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+ df=data.frame( sampleNames=samples$SampleNames,
+                 sampleAttributes=samples$SampleAttributesPrint,
+                 donorID=samples$DonorID,
+                 CanonicalSampleName = samples$CanonicalSampleName,
+                 stringsAsFactors = F)
+  df <- df[df$sampleAttributes %in% c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy"),]
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+getMutationFreq <- function(contigs, sampleType){
+    db_obsHeavy <- observedMutations(contigs,
+                                sequenceColumn="SEQUENCE_IMGT",
+                                germlineColumn="GERMLINE_IMGT",
+                                regionDefinition=IMGT_V_BY_SEGMENTS,
+                                frequency=FALSE, 
+                                nproc=1)
+   db_obsLight <- observedMutations(contigs,
+                                sequenceColumn="SEQUENCE_IMGT_LIGHT",
+                                germlineColumn="GERMLINE_IMGT_LIGHT",
+                                regionDefinition=IMGT_V_BY_SEGMENTS,
+                                frequency=FALSE, 
+                                nproc=1)
+   
+        
+   db_obsHeavy <- db_obsHeavy[,c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "mu_count_v_r", "mu_count_v_s","SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT", "donorID")]
+   db_obsLight <- db_obsLight[,c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "mu_count_v_r", "mu_count_v_s", "SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT", "donorID")]
+   
+   colnames(db_obsHeavy) <- c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "VH_R", "VH_S", "SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT", "donorID")
+   colnames(db_obsLight) <- c("CELL","C_CALL_General", "C_CALL_LIGHT_General", "VL_R", "VL_S", "SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT", "donorID")
+
+   db_obs_all <- merge(db_obsHeavy, db_obsLight, by=c("SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT","CELL", "C_CALL_General", "C_CALL_LIGHT_General","donorID"))
+   
+   
+   db_obs_all$V_heavy <- db_obs_all$VH_R + db_obs_all$VH_S
+   db_obs_all$V_light <- db_obs_all$VL_R + db_obs_all$VL_S
+   
+   db_obs_all$selectionPres_VH <- (db_obs_all$VH_R/ db_obs_all$V_heavy)
+   db_obs_all$selectionPres_VL <- (db_obs_all$VL_R/ db_obs_all$V_light)
+   
+   
+   db_obs_melted <- melt(db_obs_all,id.vars = c( "SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT","CELL","C_CALL_General",  "C_CALL_LIGHT_General","donorID","selectionPres_VH","selectionPres_VL","V_heavy","V_light"))
+   
+   db_obs_melted$variable <- as.character(db_obs_melted$variable)
+   db_obs_melted[db_obs_melted$variable %in% c("VH_R", "VH_S"), "chainT"] <- "VH"
+   db_obs_melted[db_obs_melted$variable %in% c("VL_R", "VL_S") & 
+                   db_obs_melted$C_CALL_LIGHT_General == "IGL" , "chainT"] <- "VL"
+   db_obs_melted[db_obs_melted$variable %in% c("VL_R", "VL_S") & 
+                   db_obs_melted$C_CALL_LIGHT_General == "IGK" , "chainT"] <- "VK"
+
+   db_obs_melted$C_CALL_General <- as.character(db_obs_melted$C_CALL_General)
+   
+   db_obs_melted_selectionPres <- melt(db_obs_all[,c("SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT","CELL",
+                                                     "C_CALL_General", "C_CALL_LIGHT_General", "donorID","selectionPres_VH", "selectionPres_VL")], 
+                                       id.vars = c( "SAMPLENAME","SAMPLETYPE","CLONE","NumberOfClonalCells","sampleRegion","SAMPLETYPEPRINT","CELL", "C_CALL_General", "C_CALL_LIGHT_General","donorID"))
+
+   return(list(db_obs_melted=db_obs_melted,db_obs_melted_selectionPres=db_obs_melted_selectionPres))
+}
+```
+
+```{r}
+allClones = combineAllClones()
+mutationsAll <- data.frame()
+mutationsSelectionPres <- data.frame()
+```
+
+
+```{r}
+
+for( elem in c("UC_INF", "UC_LessINF", "UC_NonINF", "Healthy")){
+    allClonesTemp <- allClones[allClones$SAMPLETYPE == elem,]
+
+      
+    k <- getMutationFreq(contigs = allClonesTemp, sampleType=elem)
+    mutationsAll <- rbind(mutationsAll, k$db_obs_melted)
+    mutationsSelectionPres <- rbind(mutationsSelectionPres, k$db_obs_melted_selectionPres)
+}
+
+saveRDS(mutationsAll, paste0(dataDir, "/RDSFiles/mutationsAll_1.rds"))
+saveRDS(mutationsSelectionPres, paste0(dataDir, "/RDSFiles/mutationsSelectionPres_1.rds"))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=4}
+ #mutationsAll <- readRDS(paste0(dataDir, "/RDSFiles/mutationsAll_1.rds"))
+ mutationsAll <- mutationsAll[mutationsAll$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+ mutationsAll$SAMPLETYPEPRINT <- paste0(as.character(mutationsAll$SAMPLETYPEPRINT), "_",sapply(mutationsAll$variable, function(x){return(strsplit(x,"_")[[1]][2]) }))
+ 
+ mutationsAll$SAMPLETYPEPRINT <- factor(mutationsAll$SAMPLETYPEPRINT,
+                                levels = c("Healthy_R","Healthy_S" ,
+                                           "UC Non-Inflamed_R","UC Non-Inflamed_S",
+                                           "UC Less Inflamed_R", "UC Less Inflamed_S",
+                                           "UC Inflamed_R", "UC Inflamed_S"
+                                           )) 
+ 
+ cList = list(c("UC Inflamed_R", "UC Inflamed_S"), c("Healthy_R", "Healthy_S"),
+              c("UC Less Inflamed_R", "UC Less Inflamed_S"), c( "UC Non-Inflamed_R","UC Non-Inflamed_S"),
+              c("Healthy_R", "UC Inflamed_R"), c("Healthy_S", "UC Inflamed_S"))
+
+ggplot(mutationsAll, aes(x=SAMPLETYPEPRINT, y=value)) + 
+     facet_grid(chainT~C_CALL_General)+
+     geom_violin(trim=FALSE, aes(fill=variable))+
+     stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red")+
+     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+     stat_compare_means(method="t.test",paired = FALSE,
+                                comparisons = cList,
+                                color="red", method.args = list(alternative = "greater"),
+                                label.y = c(50,50,50,50,60,70), aes(label = ..p.signif..))+
+     scale_fill_brewer(palette = "Pastel1")+
+     scale_y_continuous(breaks = c(0,10,20,40,60,80), labels = c(0,10,20,40,60,80))+
+     xlab("")+
+     ylab("Number of mutations in V segment")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=16),
+              axis.title =  element_text(size=16),strip.text = element_text(size=18),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+
+  #pdf(file = paste0(dataDir,"/SummaryFigures/NumberOfMutations.pdf"), width = 15, height = 10)
+  #dev.off()
+ 
+ # ggpaired(mutationsAll, x="SAMPLETYPEPRINT", y="value", fill="variable", id="CELL", line.size = 0.01,
+#                     point.size = 0.01,
+#                     facet.by = c("chainT","C_CALL_General")) +
+ #                    stat_compare_means(method="wilcox.test",paired = TRUE,
+  #                              comparisons = cList[1:4],
+  #                              color="red",method.args = list(alternative = "greater"),
+  #                              label.y= c(50,50,50,50), aes(label = ..p.signif..))+
+   #           xlab("") +
+    #          ylab("Number of mutations in V segment") +
+     #         theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "top")
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=5}
+
+mutationsAll_VH = mutationsAll[mutationsAll$chainT =="VH",]
+mutationsAll_VK = mutationsAll[mutationsAll$chainT =="VK",]
+mutationsAll_VL = mutationsAll[mutationsAll$chainT =="VL",]
+  
+mutationsAll_VH$donorClone <- paste0(mutationsAll_VH$donorID,"_",mutationsAll_VH$CLONE, "_", mutationsAll_VH$SAMPLETYPE,"_", mutationsAll_VH$variable, "_",mutationsAll_VH$C_CALL_General)
+mutationsAll_VK$donorClone <- paste0(mutationsAll_VK$donorID,"_",mutationsAll_VK$CLONE, "_", mutationsAll_VK$SAMPLETYPE,"_", mutationsAll_VK$variable,"_",mutationsAll_VK$C_CALL_General)
+mutationsAll_VL$donorClone <- paste0(mutationsAll_VL$donorID,"_",mutationsAll_VL$CLONE, "_", mutationsAll_VL$SAMPLETYPE,"_", mutationsAll_VL$variable,"_",mutationsAll_VL$C_CALL_General)
+
+mutationsAll_VH <- data.table(mutationsAll_VH)
+mutationsAll_VK <- data.table(mutationsAll_VK)
+mutationsAll_VL <- data.table(mutationsAll_VL)
+
+   
+   
+mutationsAll_VH[,medianVal := median(value),by=donorClone]
+mutationsAll_VH[,maxVal := max(value),by=donorClone]
+
+
+mutationsAll_VK[,medianVal := median(value),by=donorClone]
+mutationsAll_VK[,maxVal := max(value),by=donorClone]
+
+
+mutationsAll_VL[,medianVal := median(value),by=donorClone]
+mutationsAll_VL[,maxVal := max(value),by=donorClone]
+
+mutationsAll_VH <- data.frame(mutationsAll_VH)
+mutationsAll_VK <- data.frame(mutationsAll_VK)
+mutationsAll_VL <- data.frame(mutationsAll_VL)
+
+mutationsAll_VH <- unique(mutationsAll_VH[,c("SAMPLETYPE","CLONE","NumberOfClonalCells","SAMPLETYPEPRINT","C_CALL_General", "C_CALL_LIGHT_General","donorID","variable","chainT","donorClone","medianVal","maxVal")])
+
+ggscatter(mutationsAll_VH, x = "NumberOfClonalCells",
+             y = "medianVal",
+          size = 0.5, alpha=0.5, color = "darkgreen")+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Number of mutations")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_jitter(width = 2, height = 2, size=0.5)+geom_smooth()+
+     theme_bw()+ylim(0, 60)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggtitle("VH")+
+  geom_vline(xintercept = 15, color="red")+ stat_cor(method = "spearman", color="red")+
+  xlim(0,200)
+ 
+
+ggscatter(mutationsAll_VH, x = "NumberOfClonalCells",
+             y = "maxVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Number of mutations")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_jitter(width = 2, height = 2, size=0.5)+geom_smooth()+
+     theme_bw()+ylim(0, 60)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ stat_cor(method = "spearman", color="red")+
+  ggtitle("VH")+
+  geom_vline(xintercept = 15, color="red")+
+  xlim(0,200)
+ 
+
+mutationsAll_VK <- unique(mutationsAll_VK[,c("SAMPLETYPE","CLONE","NumberOfClonalCells","SAMPLETYPEPRINT","C_CALL_General", "C_CALL_LIGHT_General","donorID","variable","chainT","donorClone","medianVal","maxVal")])
+
+  ggscatter(mutationsAll_VK, x = "NumberOfClonalCells",
+             y = "medianVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Number of mutations")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_jitter(width = 2, height = 2, size=0.5)+geom_smooth()+
+     theme_bw()+ylim(0, 40)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle("VK")+
+    geom_vline(xintercept = 15, color="red")+
+    xlim(0,200)
+  
+   ggscatter(mutationsAll_VK, x = "NumberOfClonalCells",
+             y = "maxVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Number of mutations")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_jitter(width = 2, height = 2, size=0.5)+geom_smooth()+
+     theme_bw()+ylim(0, 40)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle("VK")+
+    geom_vline(xintercept = 15, color="red")+
+    xlim(0,200)
+   
+   mutationsAll_VL <- unique(mutationsAll_VL[,c("SAMPLETYPE","CLONE","NumberOfClonalCells","SAMPLETYPEPRINT","C_CALL_General", "C_CALL_LIGHT_General","donorID","variable","chainT","donorClone","medianVal","maxVal")])
+  ggscatter(mutationsAll_VL, x = "NumberOfClonalCells",
+             y = "medianVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Number of mutations")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_jitter(width = 2, height = 2, size=0.5)+geom_smooth()+
+     theme_bw()+ylim(0, 40)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle("VL")+
+    geom_vline(xintercept = 15, color="red")+
+    xlim(0,200)
+  
+   ggscatter(mutationsAll_VL, x = "NumberOfClonalCells",
+             y = "maxVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Number of mutations")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_jitter(width = 2, height = 2, size=0.5)+geom_smooth()+
+     theme_bw()+ylim(0, 40)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle("VL")+
+    geom_vline(xintercept = 15, color="red")+
+    xlim(0,200)
+   
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=6}
+ mutationsAll$isCellClonal = "NotCl" 
+ mutationsAll[mutationsAll$NumberOfClonalCells > 15, "isCellClonal"] = "Cl"
+ 
+mutationsAll$SAMPLETYPEPRINT <- paste0(as.character(mutationsAll$SAMPLETYPEPRINT), "_", as.character(mutationsAll$isCellClonal) )
+
+ mutationsAll$SAMPLETYPEPRINT <- factor(mutationsAll$SAMPLETYPEPRINT,
+                                levels = c("Healthy_R_Cl","Healthy_R_NotCl", "Healthy_S_Cl" , "Healthy_S_NotCl",
+                                           "UC Non-Inflamed_R_Cl", "UC Non-Inflamed_R_NotCl", "UC Non-Inflamed_S_Cl", "UC Non-Inflamed_S_NotCl",
+                                           "UC Less Inflamed_R_Cl", "UC Less Inflamed_R_NotCl", "UC Less Inflamed_S_Cl", "UC Less Inflamed_S_NotCl",
+                                           "UC Inflamed_R_Cl", "UC Inflamed_R_NotCl", "UC Inflamed_S_Cl", "UC Inflamed_S_NotCl"
+                                           )) 
+ 
+cList = list(c("UC Inflamed_R_Cl", "UC Inflamed_R_NotCl"), c("UC Inflamed_S_Cl", "UC Inflamed_S_NotCl"),
+             c("UC Less Inflamed_R_Cl", "UC Less Inflamed_R_NotCl"), c("UC Less Inflamed_S_Cl", "UC Less Inflamed_S_NotCl"),
+             c("UC Non-Inflamed_R_Cl", "UC Non-Inflamed_R_NotCl"), c("UC Non-Inflamed_S_Cl", "UC Non-Inflamed_S_NotCl"),
+              c("Healthy_R_Cl","Healthy_R_NotCl"), c( "Healthy_S_Cl" , "Healthy_S_NotCl"),
+              c("Healthy_R_Cl", "UC Inflamed_R_Cl"), c("Healthy_S_Cl", "UC Inflamed_S_Cl"))
+
+
+  ggplot(mutationsAll, aes(x=SAMPLETYPEPRINT, y=value)) + 
+     facet_grid(chainT~C_CALL_General)+
+     geom_violin(trim=FALSE, aes(fill=variable))+
+     stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red")+
+     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+     stat_compare_means(method="t.test",paired = FALSE,
+                                comparisons = cList,
+                                color="red", method.args = list(alternative = "greater"),
+                                label.y = c(50,50,50,50,50,50,50,50,60,70), aes(label = ..p.signif..))+
+     scale_fill_brewer(palette = "Pastel1")+
+     scale_y_continuous(breaks = c(0,10,20,40,60,80), labels = c(0,10,20,40,60,80))+
+     xlab("")+
+     ylab("Number of mutations in V segment")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=16),
+              axis.title =  element_text(size=16),strip.text = element_text(size=18),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=7, fig.height=5}
+ mutationsSelectionPres <- readRDS(paste0(dataDir, "/RDSFiles/mutationsSelectionPres_1.rds"))
+ mutationsSelectionPres <- mutationsSelectionPres[mutationsSelectionPres$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+ mutationsSelectionPres$chainType <- sapply(as.character(mutationsSelectionPres$variable), function(x){return(strsplit(x,"_")[[1]][2]) })
+ mutationsSelectionPres[mutationsSelectionPres$chainType == "VL" & mutationsSelectionPres$C_CALL_LIGHT_General == "IGL","chainType"] <- "VL"
+ mutationsSelectionPres[mutationsSelectionPres$chainType == "VL" & mutationsSelectionPres$C_CALL_LIGHT_General == "IGK","chainType"] <- "VK"
+ 
+ mutationsSelectionPres$SAMPLETYPEPRINT <- factor(mutationsSelectionPres$SAMPLETYPEPRINT,
+                                levels = c("Healthy","UC Non-Inflamed","UC Less Inflamed","UC Inflamed")) 
+ 
+ cList = list(c("UC Inflamed", "UC Less Inflamed"), c("UC Inflamed", "UC Non-Inflamed"), c("UC Non-Inflamed", "Healthy"),
+              c("UC Inflamed", "Healthy"))
+
+k <-  ggplot(mutationsSelectionPres, aes(x=SAMPLETYPEPRINT, y=value)) + 
+     facet_grid(chainType~C_CALL_General)+
+     geom_violin(trim=FALSE, aes(fill=variable))+
+     stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red")+
+     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+     stat_compare_means(method="t.test",paired = FALSE,
+                                comparisons = cList,
+                                color="red", method.args = list(alternative = "greater"),
+                                label.y = c(1,1.1,1.2,1.3,1.4), aes(label = ..p.signif..))+
+     scale_fill_brewer(palette = "Pastel1")+
+     scale_y_continuous(breaks = seq(0,1.6,0.2), labels = seq(0,1.6,0.2))+ylim(0,1.6)+
+     xlab("")+
+     ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=16),strip.text = element_text(size=18),
+              axis.text.x = element_text(angle = 90, hjust = 1, size=18))
+
+ #pdf(file = paste0(dataDir,"/SummaryFigures/MutationsSelectionPressure.pdf"), width = 15, height = 10)
+ plot(k)
+ #dev.off()
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=6}
+mutationsSelectionPres_VH = mutationsSelectionPres[mutationsSelectionPres$chainT =="VH",]
+mutationsSelectionPres_VK = mutationsSelectionPres[mutationsSelectionPres$chainT =="VK",]
+mutationsSelectionPres_VL = mutationsSelectionPres[mutationsSelectionPres$chainT =="VL",]
+  
+ 
+mutationsSelectionPres_VH$donorClone <- paste0(mutationsSelectionPres_VH$donorID,"_",mutationsSelectionPres_VH$CLONE, "_", mutationsSelectionPres_VH$SAMPLETYPE,"_", mutationsSelectionPres_VH$variable, "_",mutationsSelectionPres_VH$C_CALL_General)
+mutationsSelectionPres_VK$donorClone <- paste0(mutationsSelectionPres_VK$donorID,"_",mutationsSelectionPres_VK$CLONE, "_", mutationsSelectionPres_VK$SAMPLETYPE,"_", mutationsSelectionPres_VK$variable,"_",mutationsSelectionPres_VK$C_CALL_General)
+mutationsSelectionPres_VL$donorClone <- paste0(mutationsSelectionPres_VL$donorID,"_",mutationsSelectionPres_VL$CLONE, "_", mutationsSelectionPres_VL$SAMPLETYPE,"_", mutationsSelectionPres_VL$variable,"_",mutationsSelectionPres_VL$C_CALL_General)
+
+mutationsSelectionPres_VH <- data.table(mutationsSelectionPres_VH)
+mutationsSelectionPres_VK <- data.table(mutationsSelectionPres_VK)
+mutationsSelectionPres_VL <- data.table(mutationsSelectionPres_VL)
+
+   
+   
+mutationsSelectionPres_VH[,medianVal := median(value),by=donorClone]
+mutationsSelectionPres_VH[,maxVal := max(value),by=donorClone]
+
+
+mutationsSelectionPres_VK[,medianVal := median(value),by=donorClone]
+mutationsSelectionPres_VK[,maxVal := max(value),by=donorClone]
+
+
+mutationsSelectionPres_VL[,medianVal := median(value),by=donorClone]
+mutationsSelectionPres_VL[,maxVal := max(value),by=donorClone]
+
+mutationsSelectionPres_VH <- data.frame(mutationsSelectionPres_VH)
+mutationsSelectionPres_VK <- data.frame(mutationsSelectionPres_VK)
+mutationsSelectionPres_VL <- data.frame(mutationsSelectionPres_VL)
+
+mutationsSelectionPres_VH <- unique(mutationsSelectionPres_VH[,c("SAMPLETYPE","CLONE","NumberOfClonalCells","SAMPLETYPEPRINT","C_CALL_General",
+                                             "C_CALL_LIGHT_General","donorID","variable","chainType","donorClone","medianVal","maxVal")])
+
+ggscatter(mutationsSelectionPres_VH, x = "NumberOfClonalCells",
+             y = "medianVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_smooth()+
+     theme_bw()+ylim(0, 1)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+ stat_cor(method = "spearman", color="red")+
+  ggtitle("VH")+xlim(0,200)+
+  geom_vline(xintercept = 15, color="red")
+ 
+
+ggscatter(mutationsSelectionPres_VH, x = "NumberOfClonalCells",
+             y = "maxVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_smooth()+
+     theme_bw()+ylim(0, 1)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggtitle("VH")+xlim(0,200)+
+  geom_vline(xintercept = 15, color="red")
+  
+   
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=6}
+mutationsSelectionPres_VK <- unique(mutationsSelectionPres_VK[,c("SAMPLETYPE","CLONE","NumberOfClonalCells","SAMPLETYPEPRINT","C_CALL_General",
+                                             "C_CALL_LIGHT_General","donorID","variable","chainType","donorClone","medianVal","maxVal")])
+
+ggscatter(mutationsSelectionPres_VK, x = "NumberOfClonalCells",
+             y = "medianVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_smooth()+
+     theme_bw()+ylim(0, 1)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggtitle("VK")+xlim(0,200)+
+  geom_vline(xintercept = 15, color="red")
+ 
+
+ggscatter(mutationsSelectionPres_VK, x = "NumberOfClonalCells",
+             y = "maxVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_smooth()+
+     theme_bw()+ylim(0, 1)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggtitle("VK")+xlim(0,200)+
+  geom_vline(xintercept = 15, color="red")
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=10, fig.height=6}
+mutationsSelectionPres_VL <- unique(mutationsSelectionPres_VL[,c("SAMPLETYPE","CLONE","NumberOfClonalCells","SAMPLETYPEPRINT","C_CALL_General",
+                                             "C_CALL_LIGHT_General","donorID","variable","chainType","donorClone","medianVal","maxVal")])
+
+ggscatter(mutationsSelectionPres_VL, x = "NumberOfClonalCells",
+             y = "medianVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_smooth()+
+     theme_bw()+ylim(0, 1)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggtitle("VL")+xlim(0,200)+
+  geom_vline(xintercept = 15, color="red")
+ 
+
+ggscatter(mutationsSelectionPres_VL, x = "NumberOfClonalCells",
+             y = "maxVal",
+          size = 0.5)+
+          facet_grid(C_CALL_General~SAMPLETYPEPRINT)+
+     xlab("Size of the clone")+ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     scale_fill_brewer(palette = "Accent")+
+     geom_smooth()+
+     theme_bw()+ylim(0, 1)+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggtitle("VL")+xlim(0,200)+
+  geom_vline(xintercept = 15, color="red")
+```
+
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8, fig.height=6}
+mutationsSelectionPres$isCellClonal = "NotCl" 
+mutationsSelectionPres[mutationsSelectionPres$NumberOfClonalCells > 25, "isCellClonal"] = "Cl"
+ 
+mutationsSelectionPres$SAMPLETYPEPRINT <- paste0(as.character(mutationsSelectionPres$SAMPLETYPEPRINT), "_", as.character(mutationsSelectionPres$isCellClonal) )
+
+mutationsSelectionPres$SAMPLETYPEPRINT <- factor(mutationsSelectionPres$SAMPLETYPEPRINT,
+                                levels = c("UC Inflamed_Cl", "UC Inflamed_NotCl" ,
+                                            "UC Less Inflamed_Cl", "UC Less Inflamed_NotCl", 
+                                           "UC Non-Inflamed_Cl", "UC Non-Inflamed_NotCl", 
+                                           "Healthy_Cl","Healthy_NotCl"
+                                           )) 
+ 
+cList = list(c("UC Inflamed_Cl", "UC Inflamed_NotCl"), 
+             c("UC Less Inflamed_Cl", "UC Less Inflamed_NotCl"), 
+             c("UC Non-Inflamed_Cl", "UC Non-Inflamed_NotCl"), 
+              c("Healthy_Cl","Healthy_NotCl"), 
+              c("UC Inflamed_Cl", "Healthy_Cl"), c("UC Inflamed_NotCl","Healthy_NotCl"))
+
+ ggplot(mutationsSelectionPres, aes(x=SAMPLETYPEPRINT, y=value)) + 
+     facet_grid(chainType~C_CALL_General)+
+     geom_violin(trim=FALSE, aes(fill=variable))+
+     stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red")+
+     stat_summary(fun.data = n_fun, geom = "text", size=3)+
+     stat_compare_means(method="t.test",paired = FALSE,
+                                comparisons = cList,
+                                color="red", method.args = list(alternative = "greater"),
+                                label.y = c(1,1.1,1.2,1.3,1.4, 1.5), aes(label = ..p.signif..))+
+     scale_fill_brewer(palette = "Pastel1")+
+     scale_y_continuous(breaks = seq(0,1.6,0.2), labels = seq(0,1.6,0.2))+ylim(0,1.6)+
+     xlab("")+
+     ylab("Selection pressure (Replacement / (Replacement + Silent))")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=16),strip.text = element_text(size=18),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=13, fig.height=8}
+getSomaticMutationBars <- function(contigs, heavyOrLight="heavy", sampleType){
+    
+    if(heavyOrLight == "heavy"){
+      db_obs <- observedMutations(contigs,
+                                sequenceColumn="SEQUENCE_IMGT",
+                                germlineColumn="GERMLINE_IMGT",
+                                regionDefinition=IMGT_V_BY_REGIONS,
+                                frequency=TRUE, 
+                                nproc=1)
+      muCols <- grep("CELL|MU_FREQ|C_CALL_General", colnames(db_obs))
+      tt <-  db_obs[,muCols]
+      
+    }else if(heavyOrLight == "light"){
+      db_obs <- observedMutations(contigs,
+                                sequenceColumn="SEQUENCE_IMGT_LIGHT",
+                                germlineColumn="GERMLINE_IMGT_LIGHT",
+                                regionDefinition=IMGT_V_BY_REGIONS,
+                                frequency=TRUE, 
+                                nproc=1)
+      
+      db_obs <- db_obs[db_obs$C_CALL_LIGHT_General %in% c("IGK","IGL"),]
+        
+      muCols <- grep("CELL|MU_FREQ|C_CALL_LIGHT_General", colnames(db_obs))
+      tt <- db_obs[,muCols]
+      tt$C_CALL_General <- tt$C_CALL_LIGHT_General
+      tt$C_CALL_LIGHT_General <- NULL
+    }
+  
+      db_obsPlot <- melt(tt, id.vars = c("CELL","C_CALL_General"))
+      db_obsPlot$variable <- sapply(db_obsPlot$variable, function(x){strsplit(as.character(x),"MU_FREQ_")[[1]][2]})
+      db_obsPlot$region <- sapply(db_obsPlot$variable, function(x){strsplit(x,"_")[[1]][1]})
+      db_obsPlot$mutationType <- sapply(db_obsPlot$variable, function(x){strsplit(x,"_")[[1]][2]})
+      db_obsPlot$cellRegion <- paste0(db_obsPlot$CELL,"_",db_obsPlot$region,"_",db_obsPlot$C_CALL_General)
+      db_obsPlot$variable <- factor(db_obsPlot$variable, levels=c("CDR1_R", "CDR1_S","CDR2_R", "CDR2_S","FWR1_R", "FWR1_S","FWR2_R", "FWR2_S","FWR3_R", "FWR3_S"))
+      db_obsPlot$sampleType <- sampleType
+      
+     
+      return(db_obsPlot)
+}
+
+```
+
+```{r}
+# mutationsAllByRegionHeavy <- data.frame()
+# mutationsAllByRegionLight <- data.frame()
+# 
+# for( elem in c("UC Inflamed", "UC Less Inflamed", "UC Non-Inflamed", "Healthy")){
+#     dfTemp <- df[df$sampleAttributes == elem,]
+# 
+# 
+#     for(sName in unique(dfTemp$CanonicalSampleName)){
+#       print(paste0(elem , " ", sName))
+#       allContigs <- read.table(paste0(dataDir,"/MergedVDJReplicates/",sName,
+#                                        "/filtered_single_light_heavy_paired_clone-pass.tab"),
+#                               sep="\t", header=TRUE, stringsAsFactors = F)
+#       allContigs <- allContigs[allContigs$C_CALL != "",]
+#       allContigs$C_CALL_General <- sapply(allContigs$C_CALL, function(x){substr(x,1,4)})
+#       allContigs$C_CALL_LIGHT_General <- sapply(allContigs$C_CALL_LIGHT, function(x){substr(x,1,3)})
+#       allContigs <- allContigs[allContigs$C_CALL_LIGHT_General %in% c("IGL", "IGK"),]
+#       allContigs <- allContigs[allContigs$C_CALL_General %in% c("IGHA", "IGHG", "IGHM"),]
+#       allContigs$CELL <- paste0(sName,"_",allContigs$CELL)
+#       mutationsAllByRegionHeavy <- rbind(mutationsAllByRegionHeavy, getSomaticMutationBars(allContigs,
+#                                                                                  heavyOrLight="heavy",
+#                                                                                  sampleType=elem))
+#       mutationsAllByRegionLight <- rbind(mutationsAllByRegionLight, getSomaticMutationBars(allContigs,
+#                                                                                  heavyOrLight="light",
+#                                                                                  sampleType=elem))
+#     }
+# }
+# 
+# 
+# saveRDS(mutationsAllByRegionHeavy, paste0(dataDir, "/RDSFiles/mutationsAllByRegionHeavy.rds"))
+# saveRDS(mutationsAllByRegionLight, paste0(dataDir, "/RDSFiles/mutationsAllByRegionLight.rds"))
+
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=13, fig.height=8}
+ mutationsAllByRegionHeavy <- readRDS(paste0(dataDir, "/RDSFiles/mutationsAllByRegionHeavy.rds"))
+
+  mutationsAllByRegionHeavy$sampleType <- paste0(mutationsAllByRegionHeavy$sampleType,"_",mutationsAllByRegionHeavy$mutationType)
+  
+  mutationsAllByRegionHeavy$sampleType <- factor(mutationsAllByRegionHeavy$sampleType,
+                                levels = c("Healthy_R","Healthy_S" ,
+                                           "UC Non-Inflamed_R","UC Non-Inflamed_S",
+                                           "UC Less Inflamed_R", "UC Less Inflamed_S",
+                                           "UC Inflamed_R", "UC Inflamed_S"
+                                           )) 
+  
+  
+  ggboxplot(mutationsAllByRegionHeavy, x = "sampleType", y = "value",
+          fill = "mutationType",remove = "point", add="mean",add.params = list(color = "red"),
+          size = 0.01, bxp.errorbar = T)+
+          facet_grid(C_CALL_General~region)+
+          stat_compare_means(method="t.test",
+                                comparisons = cList,paired=F,method.args = list(alternative = "greater"),
+                                color="red",
+                                label.y= c(0.4,0.4,0.4,0.4,0.45,0.5), aes(label = ..p.signif..))+
+     xlab("")+
+     scale_fill_brewer(palette = "Accent")+ylab("Mutation frequency")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=13, fig.height=8}
+   mutationsAllByRegionLight <- readRDS(paste0(dataDir, "/RDSFiles/mutationsAllByRegionLight.rds"))
+
+
+   mutationsAllByRegionLight$sampleType <- paste0(mutationsAllByRegionLight$sampleType,"_",mutationsAllByRegionLight$mutationType)
+  
+  mutationsAllByRegionLight$sampleType <- factor(mutationsAllByRegionLight$sampleType,
+                                levels = c("Healthy_R","Healthy_S" ,
+                                           "UC Non-Inflamed_R","UC Non-Inflamed_S",
+                                           "UC Less Inflamed_R", "UC Less Inflamed_S",
+                                           "UC Inflamed_R", "UC Inflamed_S"
+                                           )) 
+
+   
+  ggboxplot(mutationsAllByRegionLight, x = "sampleType", y = "value",
+          fill = "mutationType",remove = "point", add="mean",add.params = list(color = "red"),
+          size = 0.01, bxp.errorbar = T)+
+          facet_grid(C_CALL_General~region)+
+          stat_compare_means(method="t.test",
+                                comparisons = cList,paired=F,method.args = list(alternative = "greater"),
+                                color="red",
+                                label.y= c(0.4,0.4,0.4,0.4,0.45,0.5), aes(label = ..p.signif..))+
+     xlab("")+ylim(c(0,0.6))+
+     scale_fill_brewer(palette = "Set2")+ylab("Mutation frequency")+
+     theme_bw()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=15),strip.text = element_text(size=15),
+              axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+

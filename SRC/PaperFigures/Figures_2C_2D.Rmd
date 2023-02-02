@@ -1,0 +1,163 @@
+---
+title: "Figures 2A, 2B"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("scatterplot3d")
+library("igraph")
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+rownames(samples) <- samples$SampleNames
+samples <- samples[samples$Use==1,]
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, echo=FALSE, fig.width=15, fig.height=10}
+
+
+UC_pat= c("UC3", "UC10", "UC15", "UC16","UC17", "UC18","UC20","UC22")
+UC_NonInf = c("UC4", "UC9", "UC14", "UC19","UC23")
+healthy= c("Healthy1", "Healthy2", "Healthy3", "Healthy4", "Healthy5", "Healthy7", "Healthy8", "Healthy9")
+
+generateForestData <- function(inList){
+  
+  allGraphs <- list()
+
+  for(elem in inList){
+      print(elem)
+      inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                       "/filtered_single_light_heavy_paired_clone-pass.tab"),
+                sep="\t", header=TRUE, stringsAsFactors = F)
+      inClones <- prepareClones(inClones, minNumCells = 2)
+    
+      top10Clones <- unique(inClones$CLONE)[1:50]
+       
+      for(cloneID in top10Clones){
+        print(cloneID)
+        sub_db <- subset(inClones, CLONE == cloneID)
+    
+        if(nrow(sub_db) > 2){
+          cloneInfo <- generateLineageClone(sub_db, mergeWithTranscriptome = F, mergeWithDonorID=F, padEnd=T)
+          myGraph <- getColoneGraph(clone=cloneInfo)
+          allGraphs <- lappend(allGraphs, myGraph)
+        }
+      }
+   }
+
+  return(allGraphs)
+}
+
+
+saveRDS(generateForestData(inList=UC_pat), paste0(dataDir,"/RDSFiles/allGraphs_UC_pat.rds"))
+saveRDS(generateForestData(inList=healthy), paste0(dataDir,"/RDSFiles/allGraphs_healthy.rds"))
+saveRDS(generateForestData(inList=UC_NonInf), paste0(dataDir,"/RDSFiles/allGraphs_NonInf.rds"))
+```
+
+
+```{r fig.width=100, fig.height=100}
+
+
+saveFrostPlot  <- function(allGraphsIn, fName){
+    graph <- igraph::disjoint_union(allGraphsIn)
+
+    graph <- delete_vertex_attr(graph, "label")
+    graph <- delete_edge_attr(graph, "label")
+    V(graph)$label <- ""
+    V(graph)$vSize <- V(graph)$collapse_count / 8 
+    V(graph)$vSize[ V(graph)$vSize < 1 ] <- 1
+    V(graph)$vSize[ is.na(V(graph)$vSize)] <- 0.01
+    
+    
+    pdf(fName, height =7, width=7)
+    
+    coords <- layout_(graph, in_circle(), component_wise()) 
+    #coords <- layout.fruchterman.reingold(graph, component_wise())
+    
+    plot(graph, layout = coords,
+     edge.arrow.mode=0,
+     vertex.frame.color=V(graph)$vcolor,
+     vertex.shape="pie",
+     vertex.edge.width =50,
+     vertex.pie=V(graph)$cellPerc,
+     vertex.pie.color=list(c("black","white","lightblue", "thistle1","ivory","coral")),
+     vertex.size=V(graph)$vSize,
+     edge.width = 1, rescale=TRUE, vertex.label=NA, vertex.label.dist=0.0,
+    vertex.label.cex=50)
+    
+    legend("topleft", c("Healthy", "UC Non-Inflamed", "UC Less-Inflamed", "UC Inflamed"),
+             fill=c("lightblue", "thistle1","ivory","coral"), cex=0.75, title = "Node fill color")
+    legend("topright", c("IGHG", "IGHA", "IGHM"),
+             fill=c("turquoise2", "darkorchid", "darkgreen"), cex=0.75,title = "Node border color")
+
+    dev.off()
+
+}
+
+
+```
+
+```{r}
+allGraphs_UC <- readRDS(paste0(dataDir,"/RDSFiles/allGraphs_UC_pat.rds"))
+allGraphs_UCNonInf <- readRDS(paste0(dataDir,"/RDSFiles/allGraphs_NonInf.rds"))
+allGraphs_Healthy <- readRDS(paste0(dataDir,"/RDSFiles/allGraphs_healthy.rds"))
+
+for(i in 1:20){
+  saveFrostPlot(allGraphs_UC, fName=paste0("./UC_Forests/UC_Forest_",i,".pdf"))
+  saveFrostPlot(allGraphs_UCNonInf, fName=paste0("./UC_NonInf_Forests/UC_NonInf_Forest_",i,".pdf"))
+  saveFrostPlot(allGraphs_Healthy, fName=paste0("./Healthy_Forests/Healthy_Forest_",i,".pdf"))
+}
+
+saveFrostPlot(allGraphs_UC, fName="Legends.pdf")
+
+
+```
+
+```{r}
+identicalCellPerc = list()
+
+for(elem in c(UC_pat, UC_NonInf, healthy)){
+        inClones <- read.table(paste0("/Users/beraslan/WORKSPACE/BCell/DATA/Subjects/",elem,
+                       "/filtered_single_light_heavy_paired_clone-pass.tab"),
+                sep="\t", header=TRUE, stringsAsFactors = F)
+        inClones <- prepareClones(inClones, minNumCells = 2)
+        
+        inClonesSplit <- split(inClones, f = inClones$SEQUENCE_VDJ)
+        
+        nEqSize = lapply(inClonesSplit, function(x){nrow(x)} )
+        nEqSize = unlist(nEqSize)
+        
+        identicalCellPerc = lappend(identicalCellPerc, c(elem, sum(nEqSize), sum(nEqSize[nEqSize>1])))
+    
+}
+
+```
+
+```{r}
+identicalCellPerc <- data.frame(do.call(rbind, identicalCellPerc), stringsAsFactors = FALSE)
+colnames(identicalCellPerc) = c("Donor", "TotalCells","IdenticalCells")
+identicalCellPerc$TotalCells <- as.numeric(identicalCellPerc$TotalCells )
+identicalCellPerc$IdenticalCells <- as.numeric(identicalCellPerc$IdenticalCells )
+identicalCellPerc$percent <- round((identicalCellPerc$IdenticalCells / identicalCellPerc$TotalCells)*100, digits = 2)
+
+identicalCellPerc$Donor <- factor(identicalCellPerc$Donor , levels=donorsTypeOrdered)
+
+```
+
+```{r fig.width=6, fig.height=3}
+identicalCellPerc[identicalCellPerc$Donor %in% UC_pat, "myCol"] = "#F8766D"
+identicalCellPerc[identicalCellPerc$Donor %in% UC_NonInf, "myCol"] = "#00BFC4"
+identicalCellPerc[identicalCellPerc$Donor %in% healthy, "myCol"] = "#C77CFF"
+
+ggplot(data=identicalCellPerc, aes(x=Donor, y=percent)) +
+  geom_bar(stat="identity", fill=identicalCellPerc$myCol)+
+  geom_text(aes(label=percent), vjust=1.6, color="black", size=3.5)+
+  theme_minimal()+ylab("Percent of identical cells (%)")+theme(axis.text.y= element_text(size=15),
+                                                               axis.text.x= element_text(angle = 60, hjust = 1, size=15),
+                                                               axis.title.y = element_text(size=20))+xlab("")
+```
+

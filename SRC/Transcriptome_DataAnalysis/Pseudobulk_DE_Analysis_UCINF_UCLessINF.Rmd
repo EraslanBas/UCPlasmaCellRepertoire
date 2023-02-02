@@ -1,0 +1,145 @@
+---
+title: "Pseudobulk DE Analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+source("Main.R")
+library("cowplot")
+library(gtools)
+library(ggpubr)
+library(Matrix.utils)
+library(DESeq2)
+
+
+library(SingleCellExperiment)
+
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+
+serObj <- readRDS(paste0(dataDir, "/RDSFiles/allSamplesCombined_3.rds"))
+```
+
+```{r}
+##For DE  testing open this line
+serObj <- subset(serObj, stim %in% c("UC_LessINF", "UC_INF"))
+
+# Extract raw counts and metadata to create SingleCellExperiment object
+counts <- serObj@assays$RNA@counts 
+
+metadata <- serObj@meta.data
+
+
+# Set up metadata as desired for aggregation and DE analysis
+#metadata$cluster_id <- factor(serObj@active.ident)
+metadata$sampleName <- factor(serObj$sampleName)
+
+
+# Create single cell experiment object
+sce <- SingleCellExperiment(assays = list(counts = counts), 
+                           colData = metadata)
+
+# Identify groups for aggregation of counts
+groups <- colData(sce)[, c("sampleName")]
+
+#assays(sce)
+#dim(counts(sce))
+```
+
+```{r}
+sids <- purrr::set_names(levels(sce$sampleName))
+ns <- length(sids)
+ns
+
+# Generate sample level metadata
+
+## Determine the number of cells per sample
+table(sce$sampleName)
+
+## Turn named vector into a numeric vector of number of cells per sample
+n_cells <- as.numeric(table(sce$sampleName))
+
+## Determine how to reoder the samples (rows) of the metadata to match the order of sample names in sids vector
+m <- match(sids, sce$sampleName)
+
+## Create the sample level metadata by combining the reordered metadata with the number of cells corresponding to each sample.
+ei <- data.frame(colData(sce)[m, ], 
+                  n_cells, row.names = NULL) 
+                
+ei
+```
+
+```{r}
+groups <- colData(sce)[, c("sampleName")]
+
+pb <- aggregate.Matrix(t(counts(sce)), 
+                       groupings = groups, fun = "sum") 
+
+class(pb)
+
+dim(pb)
+
+pb <- t(pb)
+```
+
+```{r}
+metDat <- unique(metadata[,c("sampleName", "stim")])
+metDat$sampleName <- factor(metDat$sampleName, levels = levels(metadata$sampleName))
+metDat = metDat[order(metDat$sampleName),]
+
+
+dds <- DESeqDataSetFromMatrix(pb, 
+                              colData = metDat, 
+                              design = ~ stim)
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+
+resWrite <- res[!is.na(res$padj ),]
+resWrite <- resWrite[resWrite$padj < 0.05,]
+resWrite <- resWrite[abs(resWrite$log2FoldChange) > 0.9,]
+resWrite <- resWrite[order(-resWrite$log2FoldChange),]
+resWrite$Gene = rownames(resWrite)
+
+write.csv(resWrite[,c("Gene", "baseMean","log2FoldChange", "lfcSE","pvalue", "padj")], paste0(dataDir, "/Pseudobulk_DE_Genes_UCINF_ICLessINF.csv"), quote = F, row.names = FALSE)
+```
+
+```{r fig.width=14, fig.height=25}
+k <- c("XBP1", "CXCR4", "CD79A", "CD38", "MZB1","HERPUD1", "GPX1", "FKBP11", "COX7A2", "ERLEC1", "DERL3", "ZFP36L2", "ST6GAL1", "PRDM1", "DERL3","DERL1", "CD74", "CD79A", "CD79B", "HLA-A", "HLA-B", "HLA-C", "HLA-DMA" , "HLA-DOB",  "HLA-DPA1", "HLA-DPB1", "HLA-DQA1", "HLA-DQA2", "HLA-DQB1", "HLA-DRA",  "HLA-DRB1", "HLA-DRB5")
+
+
+pb = as.data.frame(pb)
+pb$Gene = rownames(pb)
+pbMelted <- melt(pb, id.vars="Gene")
+pbMelted$sampleName = pbMelted$variable
+pbMelted = merge(pbMelted, metDat, by="sampleName")
+
+pbMelted <- pbMelted[pbMelted$Gene %in% k,]
+pbMelted$stim <- factor(pbMelted$stim, levels = c("UC_INF", "UC_LessINF", "UC_NonINF", "Healthy"))
+p <- ggplot(pbMelted, aes(x=stim, y=value)) + 
+     facet_wrap(~Gene, ncol=5)+
+     geom_violin(trim=FALSE, aes(fill=stim))+
+     stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red")+
+     #scale_y_continuous(breaks = c(0,2.5, 5), labels = c(0,2.5,5))+
+     stat_summary(aes(label=round(..y..,2)), fun.y="mean", geom="text", size=5)+
+     stat_compare_means(method="t.test",paired = FALSE,
+                                comparisons = list(c("Healthy", "UC Inflamed")),
+                                color="red", 
+                                label.y = c(10), aes(label = ..p.signif..))+
+     #scale_fill_brewer(palette = "Pastel1")+
+     xlab("")+
+     ylab("Gene expression (lg2)")+
+     theme_minimal()+
+        theme(legend.position = "None", axis.text = element_text(size=13),
+              axis.title =  element_text(size=16),strip.text = element_text(size=18),
+              axis.text.x = element_text(angle = 90, hjust = 1, size=18))
+
+ pdf(file = "./PDFFigures/Fig3F.pdf", width = 14,  height = 25) 
+  plot(p)
+ dev.off()
+```
+
